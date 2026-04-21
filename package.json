@@ -1,0 +1,14 @@
+{
+  "name": "terraform-provider-js",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r run build",
+    "proto:gen": "pnpm --filter @tfjs/sdk run proto:gen",
+    "test": "pnpm -r run test --if-present"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.0",
+    "tsx": "4.21.0",
+    "typescript": "6.0.3"
+  }
+}

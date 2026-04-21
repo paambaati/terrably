@@ -1,0 +1,33 @@
+dist/
+node_modules/
+
+# TypeScript source maps and declaration maps
+*.js.map
+*.d.ts.map
+
+# Compiled provider binaries (SEA)
+packages/example-provider/bin-sea/
+packages/example-provider/bin/terraform-provider-*
+packages/reference-provider/bin-sea/
+packages/reference-provider/bin/terraform-provider-*
+
+# SEA build intermediates
+packages/*/dist/_sea_bundle.cjs
+packages/*/dist/_sea_entry.cjs
+packages/*/dist/sea-config.json
+
+# Terraform state, plans, and lock files
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/tfplan
+**/.terraform.lock.hcl
+
+# Temporary files from E2E tests and SEA builds
+/tmp/tf-js-proto-*/
+/tmp/tf-e2e-*/
+/tmp/terraformrc-*/
+
+# macOS metadata
+.DS_Store
+

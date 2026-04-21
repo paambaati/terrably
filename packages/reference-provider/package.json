@@ -1,0 +1,23 @@
+{
+  "name": "@tfjs/reference-provider",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "start": "node --require tsx/cjs src/main.ts",
+    "api": "node --require tsx/cjs api-server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --require tsx/cjs --test tests/e2e.test.ts"
+  },
+  "dependencies": {
+    "@tfjs/sdk": "workspace:*",
+    "express": "^4.18.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "25.6.0",
+    "tsx": "4.21.0",
+    "typescript": "6.0.3"
+  }
+}

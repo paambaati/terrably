@@ -1,0 +1,25 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
+// go-plugin GRPCStdio service – required to avoid "method not found" errors.
+// The host expects this to be present; we serve it but return nothing.
+syntax = "proto3";
+package plugin;
+
+import "grpc_controller.proto";
+
+message StdioData {
+  enum Channel {
+    INVALID = 0;
+    STDOUT = 1;
+    STDERR = 2;
+  }
+  Channel channel = 1;
+  bytes data = 2;
+}
+
+service GRPCStdio {
+  // StreamStdio returns a stream that the plugin uses to send stdout/stderr
+  // data back to the host. The host sends an initial empty request.
+  rpc StreamStdio(Empty) returns (stream StdioData);
+}

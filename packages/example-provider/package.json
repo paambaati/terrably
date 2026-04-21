@@ -1,0 +1,19 @@
+{
+  "name": "@tfjs/example-provider",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "build:sea": "node scripts/build-sea.mjs",
+    "start": "node dist/src/main.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tfjs/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "typescript": "6.0.3"
+  }
+}

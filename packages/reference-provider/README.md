@@ -1,0 +1,54 @@
+# example-provider
+
+A working Terraform provider written in TypeScript using `@tfjs/sdk`, targeting a fake "DummyCloud" REST API.
+
+## Contents
+
+| Path | Purpose |
+|---|---|
+| `api-server/index.ts` | In-memory REST API server (Express) simulating a cloud provider |
+| `src/provider.ts` | `DummyCloudProvider` — implements the `Provider` interface |
+| `src/resources/server.ts` | `DummyCloudServer` — manages `dummycloud_server` resources |
+| `src/main.ts` | Entry point — calls `serve()` from the SDK |
+| `tests/e2e.ts` | End-to-end test: spins up API + provider, runs `terraform apply/destroy` |
+
+## Resource schema
+
+```hcl
+resource "dummycloud_server" "example" {
+  name = "my-server"   # required
+  size = "small"       # required — "small" | "medium" | "large"
+  # computed:
+  # id, status, created_at
+}
+```
+
+## Running the provider manually
+
+```bash
+# Build
+pnpm exec tsc
+
+# Start the fake API
+node dist/api-server/index.js &
+
+# Start the provider in dev mode
+TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 \
+TF_PLUGIN_DEBUG=1 \
+  node dist/src/main.js
+# → prints: export TF_REATTACH_PROVIDERS='...'
+
+# In a separate shell, set that env var and run Terraform
+export TF_REATTACH_PROVIDERS='...'
+terraform -chdir=tests/fixtures init
+terraform -chdir=tests/fixtures apply
+```
+
+## Running E2E tests
+
+> Requires `terraform` CLI in PATH.
+
+```bash
+pnpm exec tsc
+node dist/tests/e2e.js
+```

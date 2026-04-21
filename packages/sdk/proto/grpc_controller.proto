@@ -1,0 +1,13 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
+// go-plugin GRPCController service – required by the go-plugin host to
+// perform health checks and request graceful shutdown.
+syntax = "proto3";
+package plugin;
+
+message Empty {}
+
+service GRPCController {
+  rpc Shutdown(Empty) returns (Empty);
+}
