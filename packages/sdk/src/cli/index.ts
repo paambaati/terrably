@@ -9,7 +9,9 @@
  *   terrably publish [options]                      Package + sign + upload a release
  */
 
-import { cac } from "cac";
+// @ts-ignore TS1479: cac ships CJS (index-compat.js) but its .d.ts uses ESM syntax;
+// the default import works correctly at runtime via esModuleInterop.
+import cac from "cac";
 import { newCommand } from "./commands/new.js";
 import { buildCommand } from "./commands/build.js";
 import { checkCommand } from "./commands/check.js";
@@ -100,7 +102,7 @@ cli.version(version);
 cli.help();
 
 // Unknown command handler
-cli.on("command:*", () => {
+cli.addEventListener("command:*", () => {
   process.stderr.write(`terrably: unknown command '${cli.args.join(" ")}'\n`);
   cli.outputHelp();
   process.exit(1);

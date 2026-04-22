@@ -12,6 +12,7 @@
     "test": "pnpm -r run --if-present test",
     "lint": "pnpm -r run --if-present lint",
     "lint:fix": "pnpm -r run --if-present lint:fix",
-    "format": "pnpm -r run --if-present format"
+    "format": "pnpm -r run --if-present format",
+    "publish": "pnpm -r run --if-present publish"
   }
 }
