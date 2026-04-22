@@ -33,6 +33,9 @@ const TF_MAGIC_COOKIE = "d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d699
 const PROVIDER_ROOT   = path.resolve(__dirname, "..");
 const SDK_ROOT        = path.resolve(PROVIDER_ROOT, "..", "sdk");
 
+// terrably build outputs to bin/ by default (matches `terrably build --out bin`).
+const BIN_DIR         = path.join(PROVIDER_ROOT, "bin");
+
 // Use a fixed port offset to reduce collision risk; tests run sequentially.
 const BASE_API_PORT   = 19877;
 
@@ -75,7 +78,7 @@ async function apiGet(port: number, urlPath: string): Promise<unknown> {
 /** Write a minimal Terraform config for the suite. */
 function writeTfConfig(dir: string, apiPort: number): void {
   const overridesPath = path.join(dir, ".terraformrc");
-  const binDir        = path.join(PROVIDER_ROOT, "bin-sea");
+  const binDir        = BIN_DIR;
 
   fs.writeFileSync(overridesPath, `\
 provider_installation {
@@ -268,18 +271,18 @@ describe("provider: dev mode", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 2 — Node SEA binary (bin-sea/)
+// Suite 2 — Node SEA binary (bin/)
 // ---------------------------------------------------------------------------
 
 describe("provider: Node SEA binary", () => {
-  const seaBinary = path.join(PROVIDER_ROOT, "bin-sea", "terraform-provider-dummycloud");
+  const seaBinary = path.join(BIN_DIR, `terraform-provider-dummycloud${process.platform === "win32" ? ".exe" : ""}`);
   let api: ApiFixture;
   let tfDir: string;
 
   before(async () => {
     assert.ok(
       fs.existsSync(seaBinary),
-      `SEA binary not found at ${seaBinary}. Run: node scripts/build-sea.mjs`
+      `SEA binary not found at ${seaBinary}. Run: pnpm run build:binary`
     );
 
     api   = await startApiServer(BASE_API_PORT + 1);

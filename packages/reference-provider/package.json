@@ -1,10 +1,12 @@
 {
   "name": "terrably-reference-provider",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "type": "commonjs",
   "scripts": {
     "build": "tsc",
+    "build:binary": "terrably build",
+    "pretest": "node scripts/ensure-binary.mjs",
     "start": "node --require tsx/cjs src/main.ts",
     "api": "node --require tsx/cjs api-server/index.ts",
     "typecheck": "tsc --noEmit",
