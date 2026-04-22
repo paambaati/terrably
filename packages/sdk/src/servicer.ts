@@ -673,7 +673,7 @@ export class ProviderServicer {
     let result: unknown;
     try {
       result = await inst.call({ diagnostics: diags, functionName: req.name }, decoded);
-    } catch (err: unknown) {
+    } catch (err) {
       return { error: { text: `Function execution error: ${String(err)}`, functionArgument: undefined } };
     }
 

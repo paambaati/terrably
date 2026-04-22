@@ -112,7 +112,7 @@ void (async () => {
   try {
     cli.parse(process.argv, { run: false });
     await cli.runMatchedCommand();
-  } catch (err: unknown) {
+  } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`terrably: ✗ ${msg}\n`);
     cli.outputHelp();

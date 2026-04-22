@@ -13,8 +13,7 @@ import { DummyCloudProvider } from "./provider.js";
 
 const dev = process.argv.includes("--dev") || process.env["TF_PLUGIN_DEBUG"] === "1";
 
-serve(new DummyCloudProvider(), { dev }).catch((err: unknown) => {
+serve(new DummyCloudProvider(), { dev }).catch((err) => {
   process.stderr.write(`Fatal: ${String(err)}\n`);
   process.exit(1);
 });
-
