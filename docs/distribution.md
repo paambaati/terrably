@@ -21,10 +21,7 @@ provider to the Terraform Registry so operators can install it with a normal
 
 ## Why distribute as a binary?
 
-Operators who consume your provider should not need Node.js installed. A
-**Node.js Single Executable Application (SEA)** bundles the JS runtime into a
-single native binary — just like a Go provider — so Terraform can launch it
-directly.
+Operators who consume your provider should not need Node.js installed. A **Node.js Single Executable Application (SEA)** bundles the JS runtime into a single native binary — just like a Go provider — so Terraform can launch it directly.
 
 ---
 
@@ -43,25 +40,23 @@ directly.
 ## Build a binary locally
 
 ```bash
-# From your provider root:
+# From your provider root –
 terrably build
 
 # Output: bin/terraform-provider-mycloud  (120-130 MB, Node.js runtime embedded)
 ```
 
-`terrably build` automatically:
-1. Runs `tsc` to compile TypeScript
-2. Bundles with esbuild (single CJS file)
-3. Generates a SEA entry-point that extracts the embedded `.proto` files into a
-   temp dir at startup
-4. Runs `node --build-sea` to produce the final binary
-5. On macOS, runs `codesign --sign -` (ad-hoc signature required for execution)
+`terrably build` automatically –
+1. Runs `tsc` to compile TypeScript.
+2. Bundles with esbuild (single CJS file).
+3. Generates a SEA entry-point that extracts the embedded `.proto` files into a temporary directory at startup.
+4. Runs `node --build-sea` to produce the final binary.
+5. On macOS, runs `codesign --sign -` (ad-hoc signature required for execution).
 
 ### Smoke-test the binary
 
 ```bash
-TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 \
-  ./bin/terraform-provider-mycloud
+TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 ./bin/terraform-provider-mycloud
 # → prints the go-plugin handshake line and blocks
 ```
 
@@ -71,10 +66,7 @@ TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991c
 
 ### How multi-platform works
 
-Node.js SEA does **not** support cross-compilation — a binary built on macOS
-will not run on Linux. The solution is a CI matrix that builds natively on each
-platform, then a single packaging step that assembles all binaries into the
-release assets the Terraform Registry requires.
+Node.js SEA does **not** support cross-compilation — a binary built on macOS will not run on Linux. The solution is a CI matrix that builds natively on each platform, then a single packaging step that assembles all binaries into the release assets the Terraform Registry requires.
 
 ```
 CI matrix (one job per platform)
@@ -94,7 +86,7 @@ Packaging job
 
 ### Required release asset layout
 
-The Terraform Registry validates that each release has exactly this structure:
+The Terraform Registry validates that each release has exactly this structure –
 
 | File | Description |
 |---|---|
@@ -103,13 +95,11 @@ The Terraform Registry validates that each release has exactly this structure:
 | `terraform-provider-{name}_{ver}_SHA256SUMS` | SHA-256 of every zip + manifest |
 | `terraform-provider-{name}_{ver}_SHA256SUMS.sig` | Binary GPG detach-signature of the checksum file |
 
-The binary **inside** each zip must be named `terraform-provider-{name}_v{ver}`
-(no OS/arch suffix, no `.exe` — Terraform appends `.exe` on Windows itself).
+The binary **inside** each zip must be named `terraform-provider-{name}_v{ver}` (no OS/arch suffix, no `.exe` — Terraform appends `.exe` on Windows itself).
 
 ### `terrably publish`
 
-`terrably publish` does all the packaging work: zipping, manifest generation,
-checksum computation, GPG signing, and optional GitHub Release creation.
+`terrably publish` does all the packaging work – zipping, manifest generation, checksum computation, GPG signing, and optional GitHub Release creation.
 
 ```
 terrably publish [options]
@@ -139,16 +129,14 @@ bin/
   terraform-provider-mycloud_windows_amd64.exe
 ```
 
-If only one binary is present with no platform suffix (e.g. the plain
-`terraform-provider-mycloud` produced by `terrably build`), it is treated as the
-current platform — useful for quick local testing.
+If only one binary is present with no platform suffix (e.g. the plain `terraform-provider-mycloud` produced by `terrably build`), it is treated as the current platform — useful for quick local testing.
 
 ### Local packaging workflow
 
 ```bash
 # 1. Generate all per-platform binaries (see CI workflow below for automation)
 #    Each CI job produces ONE binary named with its OS/arch suffix.
-#    For a local single-platform test:
+#    For a local single-platform test –
 terrably build
 mv bin/terraform-provider-mycloud bin/terraform-provider-mycloud_$(uname -s | tr '[:upper:]' '[:lower:]')_amd64
 
@@ -167,8 +155,7 @@ GPG_FINGERPRINT=your@email.com \
 
 ## GitHub Actions release workflow
 
-Create `.github/workflows/release.yml` in your provider repository. Replace
-`mycloud` with your provider's short name.
+Create `.github/workflows/release.yml` in your provider repository. Replace `mycloud` with your provider's short name.
 
 ```yaml
 name: Release
@@ -204,9 +191,9 @@ jobs:
           - { os: linux,   arch: "386", runner: ubuntu-latest    }
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -303,7 +290,7 @@ all assets were uploaded correctly.
 
 ### 1. Repository naming
 
-Your GitHub repository **must** be named `terraform-provider-{name}` (all lowercase):
+Your GitHub repository **must** be named `terraform-provider-{name}` (all lowercase) –
 
 ```
 github.com/acme/terraform-provider-mycloud
@@ -320,14 +307,13 @@ gpg --full-generate-key
 gpg --armor --export your@email.com
 ```
 
-Go to [registry.terraform.io → Settings → GPG Keys](https://registry.terraform.io/settings/gpg-keys)
-and paste the public key block. Add it under the namespace that owns your provider.
+Go to [registry.terraform.io → Settings → GPG Keys](https://registry.terraform.io/settings/gpg-keys) and paste the public key block. Add it under the namespace that owns your provider.
 
 ### 3. Publish from the registry UI
 
-1. Go to [registry.terraform.io → Publish → Provider](https://registry.terraform.io/publish/provider)
-2. Select your GitHub organisation and the `terraform-provider-mycloud` repository
-3. The registry creates a webhook — future `v*` releases are indexed automatically
+1. Go to [registry.terraform.io → Publish → Provider](https://registry.terraform.io/publish/provider).
+2. Select your GitHub organisation and the `terraform-provider-mycloud` repository.
+3. The registry creates a webhook — future `v*` releases are indexed automatically.
 
 ### 4. Verify the published provider
 
@@ -352,7 +338,7 @@ terraform plan
 
 ## Platform support matrix
 
-Terrably follows the [Terraform Registry recommended combinations](https://developer.hashicorp.com/terraform/registry/providers/os-arch):
+Terrably follows the [Terraform Registry recommended combinations](https://developer.hashicorp.com/terraform/registry/providers/os-arch) –
 
 | Platform | GitHub Actions runner | Priority |
 |---|---|---|
@@ -373,16 +359,13 @@ Terrably follows the [Terraform Registry recommended combinations](https://devel
 
 ## How proto files are handled inside the SEA
 
-`@grpc/proto-loader` reads `.proto` files from disk. Inside a SEA only built-in
-Node modules are accessible. `terrably build` works around this by:
+`@grpc/proto-loader` reads `.proto` files from disk. Inside a SEA only built-in Node modules are accessible. `terrably build` works around this by –
 
-1. Embedding the three proto files as **SEA assets** (via the `assets` field in
-   `sea-config.json`)
-2. Generating a preamble in the entry-point that extracts those assets to a
-   temporary directory at startup and sets `TF_PROTO_DIR`
-3. Cleaning up the temp directory on process exit
+1. Embedding the three proto files as **SEA assets** (via the `assets` field in `sea-config.json`)
+2. Generating a preamble in the entry-point that extracts those assets to a temporary directory at startup and sets `TF_PROTO_DIR`.
+3. Cleaning up the temporary directory on process exit.
 
-If you have a custom build pipeline, pass `protoDir` explicitly:
+If you have a custom build pipeline, pass `protoDir` explicitly –
 
 ```typescript
 import { serve } from "terrably";
@@ -406,5 +389,3 @@ Follow [Semantic Versioning](https://semver.org/) with a `v` prefix (`v1.0.0`).
 
 When bumping the `version` field on a resource `Schema`, implement `upgrade()` to
 migrate old state — see the `Resource.upgrade()` method in the API reference.
-
-

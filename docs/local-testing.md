@@ -1,6 +1,6 @@
 # Local testing guide
 
-This guide covers every workflow you'll use while iterating on a Terraform provider built with `terrably`: running plan/apply against your code, debugging gRPC calls, writing unit tests for resource logic, and running the full E2E suite.
+This guide covers every workflow you'll use while iterating on a Terraform provider built with `terrably` – running plan/apply against your code, debugging gRPC calls, writing unit tests for resource logic, and running the full E2E suite.
 
 ---
 
@@ -17,27 +17,24 @@ This guide covers every workflow you'll use while iterating on a Terraform provi
 
 This is the simplest workflow. Terraform calls your local binary as if it were a released provider.
 
-### Step 1: Build your provider
+### Step 1 – Build your provider
 
 ```bash
-pnpm exec tsc
-# or: pnpm run build
+pnpm run build
 ```
 
-### Step 2: Build the provider binary
+### Step 2 – Build the provider binary
 
-Terraform invokes providers as OS processes. Build a self-contained SEA binary:
+Terraform invokes providers as OS processes. Build a self-contained SEA binary –
 
 ```bash
-# Requires Node.js >= 22 and bun (https://bun.sh)
-node scripts/build-sea.mjs --name <name> --out bin/
-# or via the package script:
-pnpm build:sea
+# Requires Node.js >= 22
+pnpm run build:sea
 ```
 
 The output is `bin/terraform-provider-<name>` — a native binary that embeds the Node.js runtime. No Node.js or bash is required on the machine running `terraform apply`.
 
-### Step 3: Configure dev_overrides
+### Step 3 – Configure dev_overrides
 
 You can either write a global `~/.terraformrc` or a local file and point `TF_CLI_CONFIG_FILE` at it.
 
@@ -55,7 +52,7 @@ provider_installation {
 
 **Option B — edit `~/.terraformrc`** (affects all Terraform workspaces on your machine).
 
-### Step 4: Write a Terraform config
+### Step 4 – Write a Terraform config
 
 ```hcl
 # tf-workspace/main.tf
@@ -75,12 +72,12 @@ resource "mycloud_server" "example" {
 }
 ```
 
-### Step 5: Run Terraform
+### Step 5 – Run Terraform
 
 ```bash
 cd tf-workspace
 
-# With a local .terraformrc:
+# With a local .terraformrc –
 export TF_CLI_CONFIG_FILE="$PWD/.terraformrc"
 
 terraform plan
@@ -92,7 +89,7 @@ terraform destroy -auto-approve
 
 ### Iterate rapidly
 
-The loop is:
+The loop is –
 
 ```
 edit TypeScript → pnpm exec tsc → terraform plan
@@ -106,7 +103,7 @@ Each `terraform plan` spawns a fresh Node.js process, so there is no server to r
 
 Use this when you want to attach a debugger, print detailed logs, or inspect exactly what Terraform sends over gRPC.
 
-### Step 1: Start your provider manually
+### Step 1 – Start your provider manually
 
 Your `main.ts` should respect the `--dev` flag or `TF_PLUGIN_DEBUG=1`:
 
@@ -119,7 +116,7 @@ const dev = process.argv.includes("--dev") || process.env["TF_PLUGIN_DEBUG"] ===
 serve(new MyProvider(), { dev }).catch(console.error);
 ```
 
-Build and start:
+Build and start –
 
 ```bash
 pnpm exec tsc
@@ -129,7 +126,7 @@ TF_PLUGIN_DEBUG=1 \
   node dist/src/main.js
 ```
 
-The provider prints:
+The provider prints –
 
 ```
 Dev mode — set this env var:
@@ -137,9 +134,9 @@ Dev mode — set this env var:
     export TF_REATTACH_PROVIDERS='{"registry.terraform.io/myorg/mycloud":{"Protocol":"grpc","ProtocolVersion":6,"Pid":12345,"Test":true,"Addr":{"Network":"unix","String":"/tmp/tf-js-provider-12345-...sock"}}}'
 ```
 
-### Step 2: Copy the export and run Terraform
+### Step 2 – Copy the export and run Terraform
 
-In a separate shell:
+In a separate shell –
 
 ```bash
 export TF_REATTACH_PROVIDERS='...(paste from above)...'
@@ -201,7 +198,7 @@ test("read returns null for 404", async () => {
 });
 ```
 
-Run with:
+Run with –
 
 ```bash
 # First build so imports resolve
@@ -212,7 +209,7 @@ node --test dist/tests/*.test.js
 
 ### Testing with a real local API
 
-Start your fake/real API server before running tests:
+Start your fake/real API server before running tests –
 
 ```bash
 node dist/api-server/index.js &
@@ -226,12 +223,12 @@ kill %1
 
 The E2E tests live in `tests/e2e.ts` and use the built-in **`node:test`** runner — no extra test framework needed.
 
-Two suites are included:
+Two suites are included –
 
 | Suite | What runs | Binary |
 |---|---|---|
 | `provider: dev mode` | tsx + TF_REATTACH_PROVIDERS | Dev spawn (reference-provider only) |
-| `provider: Node SEA binary` | self-contained native binary | `bin-sea/` (reference-provider) |
+| `provider: Node SEA binary` | self-contained native binary | `bin/` (reference-provider) |
 
 ### Prerequisites
 
@@ -243,7 +240,7 @@ cd packages/sdk && pnpm exec tsc
 cd packages/reference-provider && pnpm exec tsc
 
 # 3. Build the SEA binary (required for the SEA suite)
-node scripts/build-sea.mjs
+pnpm run build:binary
 
 # 4. Confirm terraform is in PATH
 terraform version
@@ -256,34 +253,11 @@ cd packages/reference-provider
 node --test dist/tests/e2e.js
 ```
 
-Or via the package script:
+Or via the package script –
 
 ```bash
 pnpm run test
 ```
-
-Expected output:
-
-```
-▶ provider: dev mode
-  ✔ plan reports 2 resources to create (308ms)
-  ✔ apply creates both servers and they appear in the API (182ms)
-  ✔ destroy removes both servers from the API (146ms)
-✔ provider: dev mode (1031ms)
-▶ provider: Node SEA binary
-  ✔ smoke test: binary exits non-zero when magic cookie is missing (146ms)
-  ✔ full cycle: plan → apply → verify → destroy (1531ms)
-✔ provider: Node SEA binary (1836ms)
-ℹ tests 5
-ℹ pass 5
-ℹ fail 0
-```
-
-### Writing your own E2E tests
-
-Use the same pattern: `describe` / `it` from `node:test`, a `before` hook to start your API server and a `after` hook to clean up. The helpers `waitForApi`, `apiGet`, and the `tf()` wrapper show how to orchestrate Terraform CLI calls from within a test.
-
-Each suite runs sequentially and on separate API ports so they don't interfere with each other.
 
 ---
 
@@ -291,7 +265,7 @@ Each suite runs sequentially and on separate API ports so they don't interfere w
 
 ### "This binary is a Terraform provider plugin" on startup
 
-The magic cookie is missing. Set it in your shell before running the provider:
+The magic cookie is missing. Set it in your shell before running the provider –
 
 ```bash
 export TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2
@@ -301,11 +275,11 @@ Terraform sets this automatically when it spawns the provider; you only need it 
 
 ### "The provider does not support resource type X"
 
-The resource type name Terraform uses is `{getModelPrefix()}_{resource.getName()}`. Check that:
+The resource type name Terraform uses is `{getModelPrefix()}_{resource.getName()}`. Check that –
 
 - `getModelPrefix()` returns `"mycloud"` (no trailing underscore)
 - `getName()` returns `"server"` (no prefix)
-- Combined: `"mycloud_server"` matches what you wrote in `main.tf`
+- Combined – `"mycloud_server"` matches what you wrote in `main.tf`
 
 ### proto files not found at runtime
 
@@ -317,30 +291,7 @@ The Unix socket path changed between runs. This happens if you restart the provi
 
 ### Terraform state becomes inconsistent after a schema change
 
-If you add or rename attributes without implementing `upgrade()`, Terraform may fail to read old state. Either:
+If you add or rename attributes without implementing `upgrade()`, Terraform may fail to read old state. Either –
 
 - Increment `version` in your `Schema` constructor and implement `upgrade()` to map old attribute names to new ones
 - Or run `terraform state rm <resource>` to remove the old state and re-create the resource
-
----
-
-## Makefile reference (monorepo)
-
-```bash
-# Build everything
-pnpm --filter terrably exec tsc
-pnpm --filter terrably-reference-provider exec tsc
-
-# Run E2E
-cd packages/reference-provider && node --test dist/tests/e2e.js
-
-# Run all tests (SDK unit + reference-provider E2E)
-pnpm -r run test --if-present
-
-# Type-check without emitting
-pnpm --filter terrably exec tsc --noEmit
-pnpm --filter terrably-reference-provider exec tsc --noEmit
-
-# Regenerate proto bindings (after editing .proto files)
-cd packages/sdk && node scripts/gen-proto.js
-```

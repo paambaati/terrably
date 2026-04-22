@@ -21,7 +21,7 @@ Complete reference for every public export from `terrably`.
 
 ## Types
 
-Every attribute in a schema requires a `TfType`. Types are created via the `types` factory (each call returns a fresh instance):
+Every attribute in a schema requires a `TfType`. Types are created via the `types` factory (each call returns a fresh instance) –
 
 ```typescript
 import { types } from "terrably";
@@ -37,7 +37,7 @@ import { types } from "terrably";
 | `types.set(elementType)` | `set(T)` | `T[]` |
 | `types.map(elementType)` | `map(T)` | `Record<string, T>` |
 
-**Examples:**
+**Examples**
 
 ```typescript
 types.string()                      // string
@@ -52,7 +52,7 @@ types.list(types.map(types.bool())) // list of maps of booleans
 
 ### `TfType<T>` interface
 
-You can define custom types by implementing this interface:
+You can define custom types by implementing this interface –
 
 ```typescript
 interface TfType<T = unknown> {
@@ -404,7 +404,7 @@ Terraform ≥ 1.8 lets providers expose pure functions that are callable from co
 
 ### `TerrablyFunction`
 
-Implement this interface to define a function:
+Implement this interface to define a function –
 
 ```typescript
 import type { TerrablyFunction, FunctionSignature, FunctionCallContext, Provider } from "terrably";
@@ -564,7 +564,7 @@ output "joined" {
 
 Terrably uses [pino](https://getpino.io) to emit newline-delimited JSON on **stderr** in the
 [go-hclog](https://github.com/hashicorp/go-hclog) format that Terraform parses,
-filters, and re-emits through its own logging pipeline:
+filters, and re-emits through its own logging pipeline –
 
 ```
 {"@level":"debug","@timestamp":"2026-04-22T10:30:00.123000Z","@module":"provider","@message":"provider configured","endpoint":"https://api.example.com"}
@@ -627,7 +627,7 @@ Valid values (case-insensitive): `TRACE` · `DEBUG` · `INFO` · `WARN` · `ERRO
 | `trace` | `"trace"` | Per-attribute values, raw request/response bodies |
 | `debug` | `"debug"` | API calls, state transitions, computed diffs |
 | `info` | `"info"` | High-level lifecycle events (configured, created, destroyed) |
-| `warn` | `"warn"` | Recoverable issues: deprecated config, retried calls |
+| `warn` | `"warn"` | Recoverable issues – deprecated config, retried calls |
 | `error` | `"error"` | Unexpected internal errors that supplement a `Diagnostic` |
 
 ### Basic usage
@@ -663,7 +663,7 @@ clientLog.debug("sending request", { url: "https://api.example.com/servers", met
 // → {"@level":"debug","@module":"provider.http_client","@message":"sending request","url":"...","method":"POST"}
 ```
 
-Attach persistent fields to a request-scoped child:
+Attach persistent fields to a request-scoped child –
 
 ```typescript
 export class ServerResource implements Resource {

@@ -1,14 +1,12 @@
 # terrably
 
-Write Terraform providers in TypeScript. The framework speaks the native Terraform Plugin Protocol v6 (tfplugin6) over gRPC — the same protocol used by official Go providers — so providers built with this SDK work with every Terraform CLI ≥ 1.0 without wrappers or shims.
+Write Terraform providers in TypeScript.
 
 ---
 
 ## Install
 
 ```bash
-npm install terrably
-# or
 pnpm add terrably
 ```
 
@@ -59,7 +57,7 @@ terraform-provider-mycloud/
 
 ### 2. Implement a resource
 
-Every resource is a class implementing the `Resource` interface:
+Every resource is a class implementing the `Resource` interface –
 
 ```typescript
 // src/resources/server.ts
@@ -163,9 +161,7 @@ npx terrably build
 # → bin/terraform-provider-mycloud  (~130 MB, Node.js runtime embedded)
 ```
 
-`terrably build` compiles TypeScript, bundles with esbuild, and produces a single
-**Node.js Single Executable Application (SEA)** binary. Operators do not need
-Node.js installed.
+`terrably build` compiles TypeScript, bundles with esbuild, and produces a single **Node.js Single Executable Application (SEA)** binary. Operators do not need Node.js installed.
 
 ### 6. Verify the build
 
@@ -238,7 +234,7 @@ See [Structured logging](docs/api-reference.md#structured-logging) in the API re
 
 ### 1. Build per-platform binaries (CI matrix)
 
-Node.js SEA does not support cross-compilation. Use a CI matrix to build natively on each platform and rename each binary with its platform suffix:
+Node.js SEA does not support cross-compilation. Use a CI matrix to build natively on each platform and rename each binary with its platform suffix –
 
 ```
 bin/
