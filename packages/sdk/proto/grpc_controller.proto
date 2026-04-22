@@ -1,5 +1,6 @@
 // Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
+// From: https://github.com/hashicorp/go-plugin/blob/main/internal/plugin/grpc_controller.proto
 
 // go-plugin GRPCController service – required by the go-plugin host to
 // perform health checks and request graceful shutdown.
