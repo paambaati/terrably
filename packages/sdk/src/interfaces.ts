@@ -1,5 +1,6 @@
-import type { Schema } from "./schema.js";
+import type { Schema, DescriptionKind } from "./schema.js";
 import type { State } from "./schema.js";
+import type { TfType } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Context objects passed to resource/data-source handlers
@@ -92,8 +93,50 @@ export interface DataSource {
 export type DataSourceClass = new (provider: Provider) => DataSource;
 
 // ---------------------------------------------------------------------------
-// Provider interface
+// Provider-defined functions (Terraform >= 1.8)
 // ---------------------------------------------------------------------------
+
+export interface FunctionCallContext {
+  readonly diagnostics: Diagnostics;
+  readonly functionName: string;
+}
+
+export interface FunctionParameter {
+  name: string;
+  type: TfType;
+  description?: string;
+  descriptionKind?: DescriptionKind;
+  /** When true, null may be passed as an argument value. Default: false. */
+  allowNullValue?: boolean;
+  /**
+   * When true, unknown values may be passed. When false (default), Terraform
+   * skips the call entirely and treats the result as unknown.
+   */
+  allowUnknownValues?: boolean;
+}
+
+export interface FunctionReturn {
+  type: TfType;
+}
+
+export interface FunctionSignature {
+  parameters: FunctionParameter[];
+  returnType: FunctionReturn;
+  /** Optional final parameter that accepts zero or more additional arguments of the same type. */
+  variadicParameter?: FunctionParameter;
+  summary?: string;
+  description?: string;
+  descriptionKind?: DescriptionKind;
+  deprecationMessage?: string;
+}
+
+export interface TerrablyFunction {
+  getName(): string;
+  getSignature(): FunctionSignature;
+  call(ctx: FunctionCallContext, args: unknown[]): unknown | Promise<unknown>;
+}
+
+export type FunctionClass = new (provider: Provider) => TerrablyFunction;
 
 export interface Provider {
   /** Registry prefix, e.g. "mycloud_". All resource/datasource names are prefixed with this. */
@@ -108,7 +151,11 @@ export interface Provider {
 
   getResources(): ResourceClass[];
   getDataSources(): DataSourceClass[];
+  /** Return all function types this provider exposes. Default: [] */
+  getFunctions?(): FunctionClass[];
 
   newResource(cls: ResourceClass): Resource;
   newDataSource(cls: DataSourceClass): DataSource;
+  /** Instantiate a function. Default: new cls(this). */
+  newFunction?(cls: FunctionClass): TerrablyFunction;
 }

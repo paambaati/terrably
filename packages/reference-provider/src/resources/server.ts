@@ -11,12 +11,12 @@
  *   created_at  (string, computed) - ISO timestamp
  */
 
-import type { State } from "@tfjs/sdk";
+import type { State } from "terrably";
 import {
   types,
   Attribute,
   Schema,
-} from "@tfjs/sdk";
+} from "terrably";
 import type {
   Resource,
   CreateContext,
@@ -24,7 +24,7 @@ import type {
   UpdateContext,
   DeleteContext,
   Provider,
-} from "@tfjs/sdk";
+} from "terrably";
 
 interface ApiServer {
   id: string;

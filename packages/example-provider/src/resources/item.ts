@@ -1,4 +1,4 @@
-import { types, Attribute, Schema } from "@tfjs/sdk";
+import { types, Attribute, Schema } from "terrably";
 import type {
   Resource,
   Provider,
@@ -7,7 +7,7 @@ import type {
   UpdateContext,
   DeleteContext,
   State,
-} from "@tfjs/sdk";
+} from "terrably";
 
 /**
  * example_item resource.

@@ -1,0 +1,46 @@
+import { types, Attribute, Schema } from "terrably";
+import type {
+  Resource,
+  Provider,
+  CreateContext,
+  ReadContext,
+  UpdateContext,
+  DeleteContext,
+  State,
+} from "terrably";
+
+/**
+ * {{ prefix }}_item resource.
+ *
+ * A minimal stub that stores a name and derives a computed id.
+ * Replace the lifecycle methods with real API calls once you have a backend.
+ */
+export class {{ resourceCls }} implements Resource {
+  constructor(_provider: Provider) {}
+
+  getName(): string {
+    // Terraform resource type = getModelPrefix() + "_" + getName()
+    return "item";
+  }
+
+  getSchema(): Schema {
+    return new Schema([
+      new Attribute("id",   types.string(), { computed: true }),
+      new Attribute("name", types.string(), { required: true }),
+    ]);
+  }
+
+  async create(_ctx: CreateContext, planned: State): Promise<State> {
+    return { id: `item-${planned["name"]}`, name: planned["name"] };
+  }
+
+  async read(_ctx: ReadContext, current: State): Promise<State | null> {
+    return current;
+  }
+
+  async update(_ctx: UpdateContext, _prior: State, planned: State): Promise<State> {
+    return { id: `item-${planned["name"]}`, name: planned["name"] };
+  }
+
+  async delete(_ctx: DeleteContext, _current: State): Promise<void> {}
+}

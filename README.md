@@ -1,4 +1,4 @@
-# terraform-provider-js
+# terrably
 
 Write Terraform providers in TypeScript (or plain JavaScript). The framework speaks the native Terraform Plugin Protocol v6 (tfplugin6) over gRPC — the same protocol used by official Go providers — so providers built with this SDK work with every Terraform CLI ≥ 1.0 without any wrappers or shims.
 
@@ -8,7 +8,7 @@ Write Terraform providers in TypeScript (or plain JavaScript). The framework spe
 
 ```
 packages/
-  sdk/                  @tfjs/sdk — the framework (publish this)
+  sdk/                  terrably — the framework (publish this)
     src/
       types.ts          TfType system (string, number, bool, list, set, map, …)
       schema.ts         Attribute, NestedBlock, Block, Schema
@@ -30,7 +30,7 @@ packages/
     tf-workspace/       Sample Terraform config
 
   reference-provider/   Full working provider for a toy "DummyCloud" API (used by E2E tests)
-    api-server/         Tiny in-memory Express REST API (the fake cloud)
+    api-server/         Tiny in-memory Hono REST API (the fake cloud)
     src/
       provider.ts       DummyCloudProvider
       resources/
@@ -65,10 +65,10 @@ pnpm init
 
 ```bash
 # From npm (once published):
-pnpm add @tfjs/sdk
+pnpm add terrably
 
 # Or link directly from this monorepo during development:
-pnpm add @tfjs/sdk@workspace:*
+pnpm add terrably@workspace:*
 ```
 
 ### 3. Implement a resource
@@ -77,8 +77,8 @@ Every resource is a class that implements the `Resource` interface. The only req
 
 ```typescript
 // src/resources/server.ts
-import { types, Attribute, Schema } from "@tfjs/sdk";
-import type { Resource, CreateContext, ReadContext, UpdateContext, DeleteContext, Provider, State } from "@tfjs/sdk";
+import { types, Attribute, Schema } from "terrably";
+import type { Resource, CreateContext, ReadContext, UpdateContext, DeleteContext, Provider, State } from "terrably";
 
 export class MyCloudServer implements Resource {
   private readonly apiBase: string;
@@ -144,8 +144,8 @@ export class MyCloudServer implements Resource {
 
 ```typescript
 // src/provider.ts
-import { types, Attribute, Schema, Diagnostics } from "@tfjs/sdk";
-import type { Provider, Resource, DataSource, ResourceClass, DataSourceClass, State } from "@tfjs/sdk";
+import { types, Attribute, Schema, Diagnostics } from "terrably";
+import type { Provider, Resource, DataSource, ResourceClass, DataSourceClass, State } from "terrably";
 import { MyCloudServer } from "./resources/server.js";
 
 export class MyCloudProvider implements Provider {
@@ -178,7 +178,7 @@ export class MyCloudProvider implements Provider {
 
 ```typescript
 // src/main.ts
-import { serve } from "@tfjs/sdk";
+import { serve } from "terrably";
 import { MyCloudProvider } from "./provider.js";
 
 serve(new MyCloudProvider()).catch((err) => {
@@ -243,7 +243,7 @@ With `dev_overrides` you skip `terraform init` and Terraform always uses your lo
 
 ## Project docs
 
-- [SDK API reference](docs/api-reference.md) — every type, interface and function exported by `@tfjs/sdk`
+- [SDK API reference](docs/api-reference.md) — every type, interface and function exported by `terrably`
 - [Local testing guide](docs/local-testing.md) — detailed workflows for iterating and debugging your provider
 - [Distribution guide](docs/distribution.md) — building standalone binaries with Node.js SEA and publishing to the Terraform Registry
 

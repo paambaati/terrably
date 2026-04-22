@@ -1,12 +1,12 @@
-# example-provider
+# reference-provider
 
-A working Terraform provider written in TypeScript using `@tfjs/sdk`, targeting a fake "DummyCloud" REST API.
+A working Terraform provider written in TypeScript using `terrably`, targeting a fake "DummyCloud" REST API.
 
 ## Contents
 
 | Path | Purpose |
 |---|---|
-| `api-server/index.ts` | In-memory REST API server (Express) simulating a cloud provider |
+| `api-server/index.ts` | In-memory REST API server (Hono) simulating a cloud provider |
 | `src/provider.ts` | `DummyCloudProvider` — implements the `Provider` interface |
 | `src/resources/server.ts` | `DummyCloudServer` — manages `dummycloud_server` resources |
 | `src/main.ts` | Entry point — calls `serve()` from the SDK |

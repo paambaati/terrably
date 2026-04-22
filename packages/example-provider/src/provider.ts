@@ -1,4 +1,4 @@
-import { types, Attribute, Schema, Diagnostics } from "@tfjs/sdk";
+import { types, Attribute, Schema, Diagnostics } from "terrably";
 import type {
   Provider,
   Resource,
@@ -6,7 +6,7 @@ import type {
   ResourceClass,
   DataSourceClass,
   State,
-} from "@tfjs/sdk";
+} from "terrably";
 import { ExampleItem } from "./resources/item.js";
 
 export class ExampleProvider implements Provider {

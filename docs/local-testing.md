@@ -1,6 +1,6 @@
 # Local testing guide
 
-This guide covers every workflow you'll use while iterating on a Terraform provider built with `@tfjs/sdk`: running plan/apply against your code, debugging gRPC calls, writing unit tests for resource logic, and running the full E2E suite.
+This guide covers every workflow you'll use while iterating on a Terraform provider built with `terrably`: running plan/apply against your code, debugging gRPC calls, writing unit tests for resource logic, and running the full E2E suite.
 
 ---
 
@@ -112,7 +112,7 @@ Your `main.ts` should respect the `--dev` flag or `TF_PLUGIN_DEBUG=1`:
 
 ```typescript
 // src/main.ts
-import { serve } from "@tfjs/sdk";
+import { serve } from "terrably";
 import { MyProvider } from "./provider.js";
 
 const dev = process.argv.includes("--dev") || process.env["TF_PLUGIN_DEBUG"] === "1";
@@ -171,8 +171,8 @@ Resource lifecycle methods (`create`, `read`, `update`, `delete`) are plain asyn
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MyCloudServer } from "../src/resources/server.js";
-import { Diagnostics } from "@tfjs/sdk";
-import type { CreateContext } from "@tfjs/sdk";
+import { Diagnostics } from "terrably";
+import type { CreateContext } from "terrably";
 
 // Mock provider
 const mockProvider = { apiBase: "https://api.mycloud.example" } as any;
@@ -230,7 +230,7 @@ Two suites are included:
 
 | Suite | What runs | Binary |
 |---|---|---|
-| `provider: shell wrapper` | `node dist/src/main.js` via in-test spawn | Shell wrapper (reference-provider only) |
+| `provider: dev mode` | tsx + TF_REATTACH_PROVIDERS | Dev spawn (reference-provider only) |
 | `provider: Node SEA binary` | self-contained native binary | `bin-sea/` (reference-provider) |
 
 ### Prerequisites
@@ -265,15 +265,15 @@ pnpm run test
 Expected output:
 
 ```
-▶ provider: shell wrapper
-  ✔ plan reports 2 resources to create (430ms)
-  ✔ apply creates both servers and they appear in the API (348ms)
-  ✔ destroy removes both servers from the API (661ms)
-✔ provider: shell wrapper (2074ms)
+▶ provider: dev mode
+  ✔ plan reports 2 resources to create (308ms)
+  ✔ apply creates both servers and they appear in the API (182ms)
+  ✔ destroy removes both servers from the API (146ms)
+✔ provider: dev mode (1031ms)
 ▶ provider: Node SEA binary
-  ✔ smoke test: binary exits non-zero when magic cookie is missing (66ms)
-  ✔ full cycle: plan → apply → verify → destroy (1278ms)
-✔ provider: Node SEA binary (1504ms)
+  ✔ smoke test: binary exits non-zero when magic cookie is missing (146ms)
+  ✔ full cycle: plan → apply → verify → destroy (1531ms)
+✔ provider: Node SEA binary (1836ms)
 ℹ tests 5
 ℹ pass 5
 ℹ fail 0
@@ -328,8 +328,8 @@ If you add or rename attributes without implementing `upgrade()`, Terraform may 
 
 ```bash
 # Build everything
-pnpm --filter @tfjs/sdk exec tsc
-pnpm --filter @tfjs/reference-provider exec tsc
+pnpm --filter terrably exec tsc
+pnpm --filter terrably-reference-provider exec tsc
 
 # Run E2E
 cd packages/reference-provider && node --test dist/tests/e2e.js
@@ -338,8 +338,8 @@ cd packages/reference-provider && node --test dist/tests/e2e.js
 pnpm -r run test --if-present
 
 # Type-check without emitting
-pnpm --filter @tfjs/sdk exec tsc --noEmit
-pnpm --filter @tfjs/reference-provider exec tsc --noEmit
+pnpm --filter terrably exec tsc --noEmit
+pnpm --filter terrably-reference-provider exec tsc --noEmit
 
 # Regenerate proto bindings (after editing .proto files)
 cd packages/sdk && node scripts/gen-proto.js

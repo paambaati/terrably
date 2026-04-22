@@ -14,7 +14,7 @@
  * Env vars:
  *   TF_PLUGIN_MAGIC_COOKIE  – must equal the magic cookie value below
  *   TF_REATTACH_PROVIDERS   – when set by Terraform for debug reattach
- *   TF_PLUGIN_DEBUG         – set to "1" for verbose stderr logging
+ *   TF_LOG / TF_LOG_PROVIDER – structured log level (see logger.ts)
  */
 
 import * as grpc from "@grpc/grpc-js";
@@ -25,6 +25,7 @@ import * as path from "node:path";
 
 import { ProviderServicer } from "./servicer.js";
 import type { Provider } from "./interfaces.js";
+import { sdkLog } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -68,7 +69,7 @@ interface CachedCert {
 
 let _certCache: CachedCert | null = null;
 
-function getSelfSignedCert(): CachedCert {
+async function getSelfSignedCert(): Promise<CachedCert> {
   if (_certCache && _certCache.expiresAt > Date.now()) return _certCache;
 
   const cacheDir = path.join(os.homedir(), ".cache", "tf-js-provider");
@@ -88,12 +89,12 @@ function getSelfSignedCert(): CachedCert {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const selfsigned = require("selfsigned") as typeof import("selfsigned");
   const attrs = [{ name: "commonName", value: "localhost" }];
-  const pems = selfsigned.generate(attrs, {
+  const pems = await selfsigned.generate(attrs, {
     keySize: 2048,
     days: 7,
     algorithm: "sha256",
     extensions: [{ name: "subjectAltName", altNames: [{ type: 2, value: "localhost" }] }],
-  });
+  } as Parameters<typeof selfsigned.generate>[1]);
 
   const certDer = Buffer.from(
     pems.cert.replace(/-----BEGIN CERTIFICATE-----|\s|-----END CERTIFICATE-----/g, ""),
@@ -178,10 +179,14 @@ function buildGrpcHandlers(servicer: ProviderServicer): grpc.UntypedServiceImple
       call: grpc.ServerUnaryCall<unknown, unknown>,
       callback: grpc.sendUnaryData<unknown>
     ) => {
+      const start = Date.now();
+      sdkLog.trace(`rpc: ${methodName}`);
       try {
         const result = await (fn as Function).call(servicer, call.request, {});
+        sdkLog.trace(`rpc ok: ${methodName}`, { duration_ms: Date.now() - start });
         callback(null, result);
       } catch (err) {
+        sdkLog.error(`rpc error: ${methodName}`, { error: String(err), duration_ms: Date.now() - start });
         callback({ code: grpc.status.INTERNAL, message: String(err) } as grpc.ServiceError, null);
       }
     };
@@ -205,8 +210,6 @@ export async function serve(provider: Provider, opts: ServeOptions = {}): Promis
     );
     process.exit(1);
   }
-
-  const debug = process.env["TF_PLUGIN_DEBUG"] === "1";
 
   // Locate proto files:
   //   1. Explicit opts.protoDir (passed by caller)
@@ -260,7 +263,7 @@ export async function serve(provider: Provider, opts: ServeOptions = {}): Promis
   if (opts.dev) {
     creds = grpc.ServerCredentials.createInsecure();
   } else {
-    const cert = getSelfSignedCert();
+    const cert = await getSelfSignedCert();
     certDerB64 = cert.certDerB64;
     creds = grpc.ServerCredentials.createSsl(
       null,
@@ -289,7 +292,7 @@ export async function serve(provider: Provider, opts: ServeOptions = {}): Promis
       },
     });
     process.stdout.write(`\nDev mode — set this env var:\n\n\texport TF_REATTACH_PROVIDERS='${reattach}'\n\n`);
-    if (debug) process.stderr.write(`[DEBUG] Listening (insecure) on unix://${socketPath}\n`);
+    sdkLog.debug("listening (insecure)", { socket: socketPath });
   } else {
     // 7. Print the go-plugin handshake
     const handshake = [
@@ -301,12 +304,12 @@ export async function serve(provider: Provider, opts: ServeOptions = {}): Promis
       certDerB64,
     ].join("|");
     process.stdout.write(handshake + "\n");
-
-    if (debug) process.stderr.write(`[DEBUG] Provider started on unix://${socketPath}\n`);
+    sdkLog.debug("provider started", { socket: socketPath, tls: true });
   }
 
   // 8. Graceful shutdown
   const shutdown = () => {
+    sdkLog.debug("shutting down");
     server.tryShutdown(() => {
       fs.rmSync(socketPath, { force: true });
       process.exit(0);

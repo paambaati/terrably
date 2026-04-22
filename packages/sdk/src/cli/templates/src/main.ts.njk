@@ -1,0 +1,7 @@
+import { serve } from "terrably";
+import { {{ providerCls }} } from "./provider.js";
+
+serve(new {{ providerCls }}()).catch((err: unknown) => {
+  process.stderr.write(`Fatal: ${String(err)}\n`);
+  process.exit(1);
+});

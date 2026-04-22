@@ -1,5 +1,5 @@
 {
-  "name": "@tfjs/reference-provider",
+  "name": "terrably-reference-provider",
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
@@ -11,11 +11,11 @@
     "test": "node --require tsx/cjs --test tests/e2e.test.ts"
   },
   "dependencies": {
-    "@tfjs/sdk": "workspace:*",
-    "express": "^4.18.3"
+    "terrably": "workspace:*",
+    "@hono/node-server": "2.0.0",
+    "hono": "4.12.14"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
     "@types/node": "25.6.0",
     "tsx": "4.21.0",
     "typescript": "6.0.3"

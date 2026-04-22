@@ -34,10 +34,10 @@ import * as esbuild from "esbuild";
 const __dirname    = path.dirname(fileURLToPath(import.meta.url));
 const providerRoot  = path.resolve(__dirname, "..");
 
-// Resolve proto files from the installed @tfjs/sdk package so this script
+// Resolve proto files from the installed terrably package so this script
 // works whether the SDK is a local monorepo sibling or installed from npm.
 const _require = createRequire(import.meta.url);
-const protoSrc  = path.join(path.dirname(_require.resolve("@tfjs/sdk/package.json")), "proto");
+const protoSrc  = path.join(path.dirname(_require.resolve("terrably/package.json")), "proto");
 
 // ---------------------------------------------------------------------------
 // CLI args

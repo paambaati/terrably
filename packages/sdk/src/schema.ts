@@ -22,6 +22,8 @@ export interface AttributeOptions {
   requiresReplace?: boolean;
   /** Default value used in plan for computed+not-set attributes. */
   default?: unknown;
+  /** Write-only attribute — value is accepted but never stored in state (Terraform ≥ 1.11). */
+  writeOnly?: boolean;
 }
 
 export class Attribute {
@@ -37,6 +39,7 @@ export class Attribute {
   readonly deprecationMessage: string;
   readonly requiresReplace: boolean;
   readonly default: unknown;
+  readonly writeOnly: boolean;
 
   constructor(name: string, type: TfType, opts: AttributeOptions = {}) {
     this.name = name;
@@ -51,6 +54,7 @@ export class Attribute {
     this.deprecationMessage = opts.deprecationMessage ?? "";
     this.requiresReplace = opts.requiresReplace ?? false;
     this.default = opts.default;
+    this.writeOnly = opts.writeOnly ?? false;
   }
 
   toPb(): Schema_Attribute {
@@ -66,7 +70,7 @@ export class Attribute {
       deprecated: this.deprecated,
       deprecationMessage: this.deprecationMessage,
       nestedType: undefined,
-      writeOnly: false,
+      writeOnly: this.writeOnly,
     };
   }
 }

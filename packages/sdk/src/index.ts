@@ -1,4 +1,4 @@
-// Public API surface of @tfjs/sdk
+// Public API surface of terrably
 export { serve } from "./serve.js";
 export type { ServeOptions } from "./serve.js";
 
@@ -13,6 +13,12 @@ export type {
   DataSource,
   ResourceClass,
   DataSourceClass,
+  TerrablyFunction,
+  FunctionClass,
+  FunctionCallContext,
+  FunctionParameter,
+  FunctionReturn,
+  FunctionSignature,
   BaseContext,
   CreateContext,
   ReadContext,
@@ -40,3 +46,6 @@ export {
 } from "./types.js";
 
 export { readDynamicValue, toDynamicValue, diagsToPb } from "./encoding.js";
+
+export { createLogger } from "./logger.js";
+export type { Logger } from "./logger.js";

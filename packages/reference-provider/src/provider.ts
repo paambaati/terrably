@@ -11,8 +11,8 @@ import {
   Attribute,
   Schema,
   Diagnostics,
-} from "@tfjs/sdk";
-import type { Provider, Resource, DataSource, ResourceClass, DataSourceClass, State } from "@tfjs/sdk";
+} from "terrably";
+import type { Provider, Resource, DataSource, ResourceClass, DataSourceClass, State } from "terrably";
 import { DummyCloudServer } from "./resources/server.js";
 
 export class DummyCloudProvider implements Provider {

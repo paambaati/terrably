@@ -53,8 +53,11 @@ import {
   GetResourceIdentitySchemas_Response,
   UpgradeResourceIdentity_Response,
   GenerateResourceConfig_Response,
+  FunctionMessage,
+  FunctionError,
   ServerCapabilities,
   Diagnostic_Severity,
+  StringKind,
 } from "../gen/tfplugin6.js";
 import type {
   GetMetadata_Request,
@@ -77,7 +80,7 @@ import type {
   GenerateResourceConfig_Request,
 } from "../gen/tfplugin6.js";
 
-import type { Provider, Resource, DataSource, ResourceClass, DataSourceClass } from "./interfaces.js";
+import type { Provider, Resource, DataSource, ResourceClass, DataSourceClass, FunctionClass, TerrablyFunction } from "./interfaces.js";
 import { Diagnostics } from "./interfaces.js";
 import { readDynamicValue, toDynamicValue, diagsToPb } from "./encoding.js";
 import { encodeBlock, decodeBlock, type State } from "./schema.js";
@@ -103,6 +106,38 @@ function errorResponse<T extends object>(
   } as unknown as T;
 }
 
+function descKindToPb(kind: import("./schema.js").DescriptionKind | undefined): StringKind {
+  return kind === "plain" ? StringKind.PLAIN : StringKind.MARKDOWN;
+}
+
+function signatureToPb(sig: import("./interfaces.js").FunctionSignature): FunctionMessage {
+  return {
+    parameters: sig.parameters.map((p) => ({
+      name: p.name,
+      type: p.type.tfType(),
+      description: p.description ?? "",
+      descriptionKind: descKindToPb(p.descriptionKind),
+      allowNullValue: p.allowNullValue ?? false,
+      allowUnknownValues: p.allowUnknownValues ?? false,
+    })),
+    variadicParameter: sig.variadicParameter
+      ? {
+          name: sig.variadicParameter.name,
+          type: sig.variadicParameter.type.tfType(),
+          description: sig.variadicParameter.description ?? "",
+          descriptionKind: descKindToPb(sig.variadicParameter.descriptionKind),
+          allowNullValue: sig.variadicParameter.allowNullValue ?? false,
+          allowUnknownValues: sig.variadicParameter.allowUnknownValues ?? false,
+        }
+      : undefined,
+    return: { type: sig.returnType.type.tfType() },
+    summary: sig.summary ?? "",
+    description: sig.description ?? "",
+    descriptionKind: descKindToPb(sig.descriptionKind),
+    deprecationMessage: sig.deprecationMessage ?? "",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // ProviderServicer
 // ---------------------------------------------------------------------------
@@ -113,6 +148,7 @@ export class ProviderServicer {
   // Lazy caches
   private resMap: Map<string, ResourceClass> | null = null;
   private dsMap: Map<string, DataSourceClass> | null = null;
+  private fnMap: Map<string, FunctionClass> | null = null;
 
   constructor(provider: Provider) {
     this.provider = provider;
@@ -168,6 +204,28 @@ export class ProviderServicer {
     return this.provider.newDataSource(this.getDsCls(typeName));
   }
 
+  private loadFnMap(): Map<string, FunctionClass> {
+    if (!this.fnMap) {
+      this.fnMap = new Map(
+        (this.provider.getFunctions?.() ?? []).map((cls) => {
+          const inst: TerrablyFunction = this.provider.newFunction
+            ? this.provider.newFunction(cls)
+            : new cls(this.provider);
+          return [inst.getName(), cls];
+        })
+      );
+    }
+    return this.fnMap;
+  }
+
+  private fnInstance(name: string): TerrablyFunction {
+    const cls = this.loadFnMap().get(name);
+    if (!cls) throw new Error(`Unknown function: ${name}`);
+    return this.provider.newFunction
+      ? this.provider.newFunction(cls)
+      : new cls(this.provider);
+  }
+
   // ---------------------------------------------------------------------------
   // Capabilities / Metadata
   // ---------------------------------------------------------------------------
@@ -185,13 +243,14 @@ export class ProviderServicer {
 
     const resources = [...this.loadResMap().keys()].map((typeName) => ({ typeName }));
     const dataSources = [...this.loadDsMap().keys()].map((typeName) => ({ typeName }));
+    const functions = [...this.loadFnMap().keys()].map((name) => ({ name }));
 
     return {
       serverCapabilities: caps,
       diagnostics: [],
       resources,
       dataSources,
-      functions: [],
+      functions,
       ephemeralResources: [],
       listResources: [],
       stateStores: [],
@@ -223,12 +282,18 @@ export class ProviderServicer {
       dataSourceSchemas[typeName] = inst.getSchema().toPb() as Schema;
     }
 
+    const functionSchemas: Record<string, FunctionMessage> = {};
+    for (const [name, cls] of this.loadFnMap()) {
+      const inst = this.provider.newFunction ? this.provider.newFunction(cls) : new cls(this.provider);
+      functionSchemas[name] = signatureToPb(inst.getSignature());
+    }
+
     return {
       provider: providerSchema,
       providerMeta: emptyProviderMeta,
       resourceSchemas,
       dataSourceSchemas,
-      functions: {},
+      functions: functionSchemas,
       ephemeralResourceSchemas: {},
       listResourceSchemas: {},
       stateStoreSchemas: {},
@@ -553,10 +618,12 @@ export class ProviderServicer {
   ): Promise<DeepPartial<ReadDataSource_Response>> {
     const diags = new Diagnostics();
     const inst = this.dsInstance(req.typeName);
-    const config = readDynamicValue(req.config!) ?? {};
+    const block = inst.getSchema().block;
+    const rawConfig = readDynamicValue(req.config!) ?? {};
+    const config = decodeBlock(block, rawConfig) ?? {};
     const state = await inst.read({ diagnostics: diags, typeName: req.typeName }, config);
     return {
-      state: toDynamicValue(state ?? null),
+      state: toDynamicValue(state ? encodeBlock(block, state) : null),
       diagnostics: diagsToPb(diags.items),
     };
   }
@@ -566,11 +633,58 @@ export class ProviderServicer {
   // ---------------------------------------------------------------------------
 
   async GetFunctions(_req: GetFunctions_Request, _ctx: unknown): Promise<DeepPartial<GetFunctions_Response>> {
-    return { functions: {}, diagnostics: [] };
+    const functions: Record<string, FunctionMessage> = {};
+    for (const [name, cls] of this.loadFnMap()) {
+      const inst = this.provider.newFunction ? this.provider.newFunction(cls) : new cls(this.provider);
+      functions[name] = signatureToPb(inst.getSignature());
+    }
+    return { functions, diagnostics: [] };
   }
 
-  async CallFunction(_req: CallFunction_Request, _ctx: unknown): Promise<DeepPartial<CallFunction_Response>> {
-    return { error: { text: "Functions not implemented", functionArgument: undefined } };
+  async CallFunction(req: CallFunction_Request, _ctx: unknown): Promise<DeepPartial<CallFunction_Response>> {
+    const diags = new Diagnostics();
+    let inst: TerrablyFunction;
+    try {
+      inst = this.fnInstance(req.name);
+    } catch {
+      return { error: { text: `Function '${req.name}' not found`, functionArgument: undefined } };
+    }
+
+    const sig = inst.getSignature();
+
+    // Validate argument count
+    const minArgs = sig.parameters.length;
+    const maxArgs = sig.variadicParameter ? Infinity : minArgs;
+    if (req.arguments.length < minArgs) {
+      return { error: { text: `Too few arguments for '${req.name}': expected ${minArgs}, got ${req.arguments.length}`, functionArgument: undefined } };
+    }
+    if (req.arguments.length > maxArgs) {
+      return { error: { text: `Too many arguments for '${req.name}': expected ${minArgs}, got ${req.arguments.length}`, functionArgument: req.arguments.length - 1 } };
+    }
+
+    // Decode arguments
+    const decoded: unknown[] = [];
+    for (let i = 0; i < req.arguments.length; i++) {
+      const raw = readDynamicValue(req.arguments[i]);
+      const param = i < sig.parameters.length ? sig.parameters[i] : sig.variadicParameter!;
+      decoded.push(param.type.decode(raw));
+    }
+
+    // Call
+    let result: unknown;
+    try {
+      result = await inst.call({ diagnostics: diags, functionName: req.name }, decoded);
+    } catch (err: unknown) {
+      return { error: { text: `Function execution error: ${String(err)}`, functionArgument: undefined } };
+    }
+
+    if (diags.hasErrors()) {
+      const first = diags.items.find((d) => d.severity === "error")!;
+      return { error: { text: first.summary, functionArgument: undefined } };
+    }
+
+    const encoded = sig.returnType.type.encode(result) as Record<string, unknown> | null;
+    return { result: toDynamicValue(encoded), error: undefined };
   }
 
   // ---------------------------------------------------------------------------

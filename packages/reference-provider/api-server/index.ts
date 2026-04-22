@@ -12,7 +12,8 @@
  *   DELETE /servers/:id      → delete a server
  */
 
-import express, { Request, Response, Express } from "express";
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
 import * as crypto from "node:crypto";
 
 export interface Server {
@@ -25,20 +26,18 @@ export interface Server {
 
 const db = new Map<string, Server>();
 
-const app: Express = express();
-app.use(express.json());
+const app = new Hono();
 
 // List
-app.get("/servers", (_req: Request, res: Response) => {
-  res.json(Array.from(db.values()));
+app.get("/servers", (c) => {
+  return c.json(Array.from(db.values()));
 });
 
 // Create
-app.post("/servers", (req: Request, res: Response) => {
-  const { name, size } = req.body as { name?: string; size?: string };
+app.post("/servers", async (c) => {
+  const { name, size } = await c.req.json<{ name?: string; size?: string }>();
   if (!name || !size) {
-    res.status(400).json({ error: "name and size are required" });
-    return;
+    return c.json({ error: "name and size are required" }, 400);
   }
   const id = crypto.randomUUID();
   const server: Server = {
@@ -49,41 +48,38 @@ app.post("/servers", (req: Request, res: Response) => {
     created_at: new Date().toISOString(),
   };
   db.set(id, server);
-  res.status(201).json(server);
+  return c.json(server, 201);
 });
 
 // Read
-app.get("/servers/:id", (req: Request, res: Response) => {
-  const server = db.get(req.params["id"]!);
+app.get("/servers/:id", (c) => {
+  const server = db.get(c.req.param("id"));
   if (!server) {
-    res.status(404).json({ error: "not found" });
-    return;
+    return c.json({ error: "not found" }, 404);
   }
-  res.json(server);
+  return c.json(server);
 });
 
 // Update
-app.put("/servers/:id", (req: Request, res: Response) => {
-  const server = db.get(req.params["id"]!);
+app.put("/servers/:id", async (c) => {
+  const server = db.get(c.req.param("id"));
   if (!server) {
-    res.status(404).json({ error: "not found" });
-    return;
+    return c.json({ error: "not found" }, 404);
   }
-  const { name, size } = req.body as { name?: string; size?: string };
+  const { name, size } = await c.req.json<{ name?: string; size?: string }>();
   if (name) server.name = name;
   if (size) server.size = size;
   db.set(server.id, server);
-  res.json(server);
+  return c.json(server);
 });
 
 // Delete
-app.delete("/servers/:id", (req: Request, res: Response) => {
-  if (!db.has(req.params["id"]!)) {
-    res.status(404).json({ error: "not found" });
-    return;
+app.delete("/servers/:id", (c) => {
+  if (!db.has(c.req.param("id"))) {
+    return c.json({ error: "not found" }, 404);
   }
-  db.delete(req.params["id"]!);
-  res.status(204).send();
+  db.delete(c.req.param("id"));
+  return new Response(null, { status: 204 });
 });
 
 export default app;
@@ -94,7 +90,7 @@ export default app;
 
 if (require.main === module) {
   const port = Number(process.env["PORT"] ?? 8765);
-  app.listen(port, "127.0.0.1", () => {
+  serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, () => {
     process.stdout.write(`DummyCloud API listening on http://127.0.0.1:${port}\n`);
   });
 }

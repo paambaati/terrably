@@ -1,4 +1,4 @@
-import { serve } from "@tfjs/sdk";
+import { serve } from "terrably";
 import { ExampleProvider } from "./provider.js";
 
 serve(new ExampleProvider()).catch((err: unknown) => {

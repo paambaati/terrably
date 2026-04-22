@@ -1,14 +1,19 @@
 {
-  "name": "terraform-provider-js",
+  "name": "terrably",
   "private": true,
   "scripts": {
     "build": "pnpm -r run build",
-    "proto:gen": "pnpm --filter @tfjs/sdk run proto:gen",
+    "proto:gen": "pnpm --filter terrably run proto:gen",
     "test": "pnpm -r run test --if-present"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "esbuild": "0.28.0",
     "tsx": "4.21.0",
     "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.17",
+    "pino": "^10.3.1"
   }
 }

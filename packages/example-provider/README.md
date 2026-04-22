@@ -1,6 +1,6 @@
 # example-provider
 
-A minimal copy-pasteable starting point for writing a Terraform provider with `@tfjs/sdk`.
+A minimal copy-pasteable starting point for writing a Terraform provider with `terrably`.
 
 ## Structure
 
@@ -25,7 +25,7 @@ tf-workspace/
 # 1. Install dependencies
 pnpm install
 
-# 2. Build the SEA binary  (requires Node.js >= 22 and bun >= 1.0)
+# 2. Build the SEA binary  (requires Node.js >= 22)
 pnpm build:sea
 # → bin/terraform-provider-example  (~130 MB, self-contained, no Node.js needed)
 

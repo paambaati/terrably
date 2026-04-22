@@ -1,6 +1,6 @@
-# @tfjs/sdk — API Reference
+# terrably — API Reference
 
-Complete reference for every public export from `@tfjs/sdk`.
+Complete reference for every public export from `terrably`.
 
 ---
 
@@ -9,11 +9,13 @@ Complete reference for every public export from `@tfjs/sdk`.
 1. [Types — `TfType` system](#types)
 2. [Schema — `Attribute`, `Block`, `NestedBlock`, `Schema`](#schema)
 3. [Interfaces — `Provider`, `Resource`, `DataSource`](#interfaces)
-4. [Context objects](#context-objects)
-5. [Diagnostics](#diagnostics)
-6. [State](#state)
-7. [Unknown sentinel](#unknown-sentinel)
-8. [`serve()`](#serve)
+4. [Provider-defined functions](#provider-defined-functions)
+5. [Structured logging](#structured-logging)
+6. [Context objects](#context-objects)
+7. [Diagnostics](#diagnostics)
+8. [State](#state)
+9. [Unknown sentinel](#unknown-sentinel)
+10. [`serve()`](#serve)
 
 ---
 
@@ -22,7 +24,7 @@ Complete reference for every public export from `@tfjs/sdk`.
 Every attribute in a schema requires a `TfType`. Types are created via the `types` factory (each call returns a fresh instance):
 
 ```typescript
-import { types } from "@tfjs/sdk";
+import { types } from "terrably";
 ```
 
 | Factory call | Terraform type | TypeScript type |
@@ -70,7 +72,7 @@ interface TfType<T = unknown> {
 Describes a single attribute in a resource or provider schema.
 
 ```typescript
-import { Attribute, types } from "@tfjs/sdk";
+import { Attribute, types } from "terrably";
 
 new Attribute(name: string, type: TfType, options?: AttributeOptions)
 ```
@@ -118,7 +120,7 @@ new Attribute("region", types.string(), { required: true, requiresReplace: true 
 Groups a set of attributes and nested blocks. Rarely constructed directly — `Schema` builds one for you.
 
 ```typescript
-import { Block } from "@tfjs/sdk";
+import { Block } from "terrably";
 
 new Block(
   attributes: Attribute[] = [],
@@ -134,7 +136,7 @@ new Block(
 Represents a block that can appear multiple times (like a list of `network_interface` blocks).
 
 ```typescript
-import { NestedBlock, Block, Attribute, types } from "@tfjs/sdk";
+import { NestedBlock, Block, Attribute, types } from "terrably";
 
 new NestedBlock(
   typeName: string,
@@ -155,7 +157,7 @@ new NestedBlock(
 **Example — resource with a `tags` nested block:**
 
 ```typescript
-import { Schema, Attribute, Block, NestedBlock, types } from "@tfjs/sdk";
+import { Schema, Attribute, Block, NestedBlock, types } from "terrably";
 
 new Schema([
   new Attribute("id",   types.string(), { computed: true }),
@@ -175,7 +177,7 @@ new Schema([
 Top-level schema for a resource, data source, or provider.
 
 ```typescript
-import { Schema } from "@tfjs/sdk";
+import { Schema } from "terrably";
 
 new Schema(
   attributes: Attribute[] = [],
@@ -380,7 +382,7 @@ State is a plain JavaScript object whose keys match attribute names in your sche
 ## Unknown sentinel
 
 ```typescript
-import { Unknown } from "@tfjs/sdk";
+import { Unknown } from "terrably";
 ```
 
 `Unknown` is a singleton that represents a Terraform value that is not yet known at plan time (displayed as `(known after apply)`). The framework automatically sets computed attributes to `Unknown` during planning. You can also use it explicitly in `plan()` to mark attributes that will be determined only after an API call:
@@ -396,12 +398,310 @@ plan(ctx: PlanContext, _prior: State | null, planned: State): State {
 
 ---
 
+## Provider-defined functions
+
+Terraform ≥ 1.8 lets providers expose pure functions that are callable from configuration with `provider::<name>::<function>()`. Functions are stateless, have no side effects, and return a single typed value.
+
+### `TerrablyFunction`
+
+Implement this interface to define a function:
+
+```typescript
+import type { TerrablyFunction, FunctionSignature, FunctionCallContext, Provider } from "terrably";
+import { types } from "terrably";
+
+export class UppercaseFunction implements TerrablyFunction {
+  constructor(_provider: Provider) {}
+
+  getName(): string {
+    return "uppercase";
+  }
+
+  getSignature(): FunctionSignature {
+    return {
+      parameters: [
+        { name: "input", type: types.string(), description: "The string to convert" },
+      ],
+      returnType: { type: types.string() },
+      summary: "Convert a string to uppercase",
+      description: "Returns the input string with all letters converted to uppercase.",
+    };
+  }
+
+  call(_ctx: FunctionCallContext, args: unknown[]): unknown {
+    return String(args[0]).toUpperCase();
+  }
+}
+```
+
+### `FunctionSignature`
+
+```typescript
+interface FunctionSignature {
+  // Ordered list of named positional parameters
+  parameters: FunctionParameter[];
+
+  // The return type
+  returnType: FunctionReturn;
+
+  // Optional: accepts zero or more additional arguments of this type
+  variadicParameter?: FunctionParameter;
+
+  summary?: string;            // Short description (shown in `terraform providers schema`)
+  description?: string;        // Longer description
+  descriptionKind?: "plain" | "markdown";
+  deprecationMessage?: string; // Set to deprecate the function
+}
+```
+
+### `FunctionParameter`
+
+```typescript
+interface FunctionParameter {
+  name: string;
+  type: TfType;                // Any TfType — same types used in schema attributes
+  description?: string;
+  descriptionKind?: "plain" | "markdown";
+  allowNullValue?: boolean;    // default false — error if caller passes null
+  allowUnknownValues?: boolean; // default false — Terraform skips call if args are unknown
+}
+```
+
+### `FunctionReturn`
+
+```typescript
+interface FunctionReturn {
+  type: TfType;
+}
+```
+
+### `FunctionCallContext`
+
+```typescript
+interface FunctionCallContext {
+  readonly diagnostics: Diagnostics; // Add errors here to fail the function call
+  readonly functionName: string;
+}
+```
+
+### Registering functions with your provider
+
+Add `getFunctions()` to your `Provider` implementation:
+
+```typescript
+getFunctions(): FunctionClass[] {
+  return [UppercaseFunction, ConcatFunction];
+}
+```
+
+The method is optional — providers that don't define it advertise no functions.
+
+### Variadic functions
+
+Declare a `variadicParameter` in the signature. Terraform passes it as additional arguments appended after the positional ones.
+
+```typescript
+export class ConcatFunction implements TerrablyFunction {
+  constructor(_provider: Provider) {}
+
+  getName() { return "concat"; }
+
+  getSignature(): FunctionSignature {
+    return {
+      parameters: [
+        { name: "separator", type: types.string() },
+      ],
+      variadicParameter: { name: "values", type: types.string() },
+      returnType: { type: types.string() },
+      summary: "Join strings with a separator",
+    };
+  }
+
+  call(_ctx: FunctionCallContext, args: unknown[]): unknown {
+    const [separator, ...values] = args as string[];
+    return values.join(separator);
+  }
+}
+```
+
+### Error handling
+
+Report errors via `ctx.diagnostics`. Terraform aborts the plan/apply and displays the error:
+
+```typescript
+call(ctx: FunctionCallContext, args: unknown[]): unknown {
+  const n = args[0] as number;
+  if (n < 0) {
+    ctx.diagnostics.addError(
+      "Invalid argument",
+      `Expected a non-negative number, got ${n}`
+    );
+    return 0; // return a safe default; Terraform will discard it on error
+  }
+  return Math.sqrt(n);
+}
+```
+
+Alternatively, throwing a JavaScript exception also surfaces as a `FunctionError` to Terraform.
+
+### Using the function in Terraform
+
+```hcl
+output "server_name" {
+  value = provider::myprovider::uppercase("hello world")
+  # => "HELLO WORLD"
+}
+
+output "joined" {
+  value = provider::myprovider::concat(", ", "apple", "banana", "cherry")
+  # => "apple, banana, cherry"
+}
+```
+
+---
+
+## Structured logging
+
+Terrably uses [pino](https://getpino.io) to emit newline-delimited JSON on **stderr** in the
+[go-hclog](https://github.com/hashicorp/go-hclog) format that Terraform parses,
+filters, and re-emits through its own logging pipeline:
+
+```
+{"@level":"debug","@timestamp":"2026-04-22T10:30:00.123000Z","@module":"provider","@message":"provider configured","endpoint":"https://api.example.com"}
+```
+
+> **Why stderr?** `stdout` is reserved for the go-plugin handshake protocol.
+> Any non-handshake bytes on stdout will corrupt the gRPC connection.
+
+### `createLogger(module?)`
+
+```typescript
+import { createLogger } from "terrably";
+import type { Logger } from "terrably";
+
+createLogger(module?: string): Logger
+```
+
+Creates a new `Logger` instance. Every log line emitted by this instance includes
+`"@module": module` as a persistent field.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `module` | `string` | `"provider"` | Value for the `@module` field — use dot-separated names for subsystems |
+
+### `Logger` interface
+
+```typescript
+interface Logger {
+  trace(msg: string, fields?: Record<string, unknown>): void;
+  debug(msg: string, fields?: Record<string, unknown>): void;
+  info (msg: string, fields?: Record<string, unknown>): void;
+  warn (msg: string, fields?: Record<string, unknown>): void;
+  error(msg: string, fields?: Record<string, unknown>): void;
+  child(fields: Record<string, unknown>): Logger;
+}
+```
+
+All methods write a single JSON line to `process.stderr`. Extra `fields` are
+merged at the root of the JSON object alongside the `@`-prefixed fields.
+
+### Environment variables
+
+Log level is resolved from the environment when `createLogger()` is first called.
+If neither variable is set the logger is **silent** — no output is produced when
+the provider is invoked outside of Terraform.
+
+| Variable | Wins over | Description |
+|---|---|---|
+| `TF_LOG` | everything | Global override — applies to Terraform core **and** providers |
+| `TF_LOG_PROVIDER` | *(default)* | Provider-specific level — does not affect Terraform core logs |
+
+Valid values (case-insensitive): `TRACE` · `DEBUG` · `INFO` · `WARN` · `ERROR` · `OFF`
+
+`TF_LOG=JSON` is treated as `TRACE` (the SDK always emits JSON).
+
+### Log levels
+
+| Level | go-hclog string | When to use |
+|---|---|---|
+| `trace` | `"trace"` | Per-attribute values, raw request/response bodies |
+| `debug` | `"debug"` | API calls, state transitions, computed diffs |
+| `info` | `"info"` | High-level lifecycle events (configured, created, destroyed) |
+| `warn` | `"warn"` | Recoverable issues: deprecated config, retried calls |
+| `error` | `"error"` | Unexpected internal errors that supplement a `Diagnostic` |
+
+### Basic usage
+
+```typescript
+import { createLogger } from "terrably";
+import type { Provider, CreateContext } from "terrably";
+
+const log = createLogger("provider");
+
+export class MyProvider implements Provider {
+  configure(_ctx, config: Record<string, unknown>) {
+    log.info("provider configured", { endpoint: config["endpoint"] });
+  }
+}
+```
+
+```
+# TF_LOG=DEBUG terraform apply
+{"@level":"info","@timestamp":"...","@module":"provider","@message":"provider configured","endpoint":"https://api.example.com"}
+```
+
+### Child loggers and subsystems
+
+Use `logger.child()` to create a logger that inherits the parent's level and
+configuration but merges additional **persistent** fields into every line.
+
+Override `@module` to create a named subsystem:
+
+```typescript
+const clientLog = log.child({ "@module": "provider.http_client" });
+clientLog.debug("sending request", { url: "https://api.example.com/servers", method: "POST" });
+// → {"@level":"debug","@module":"provider.http_client","@message":"sending request","url":"...","method":"POST"}
+```
+
+Attach persistent fields to a request-scoped child:
+
+```typescript
+export class ServerResource implements Resource {
+  private log = createLogger("provider.server");
+
+  async create(ctx: CreateContext, config: Record<string, unknown>) {
+    const reqLog = this.log.child({ resource: "server", name: config["name"] });
+    reqLog.debug("creating resource");
+    const server = await apiClient.createServer(config);
+    reqLog.info("resource created", { id: server.id });
+  }
+}
+```
+
+### Accessing structured logs via Terraform
+
+```bash
+# All log levels
+TF_LOG=TRACE terraform apply 2>&1 | grep '@module.*provider'
+
+# Only provider logs, suppress Terraform core noise
+TF_LOG_PROVIDER=DEBUG terraform apply
+
+# Write logs to a file
+TF_LOG=DEBUG TF_LOG_PATH=./tf.log terraform apply
+```
+
+Terraform prefixes each provider log line with `provider.<name>:` when displaying
+it in its own log output.
+
+---
+
 ## `serve()`
 
 Start the gRPC server and perform the go-plugin handshake with Terraform.
 
 ```typescript
-import { serve } from "@tfjs/sdk";
+import { serve } from "terrably";
 
 serve(provider: Provider, opts?: ServeOptions): Promise<void>
 ```
@@ -438,4 +738,4 @@ serve(new MyProvider(), { dev: true });
 | Variable | Effect |
 |---|---|
 | `TF_PLUGIN_MAGIC_COOKIE` | **Must** equal the Terraform magic value; validated on startup |
-| `TF_PLUGIN_DEBUG` | `"1"` enables verbose stderr logging and dev mode |
+| `TF_LOG` / `TF_LOG_PROVIDER` | Controls structured log level (see [Structured logging](#structured-logging)) |

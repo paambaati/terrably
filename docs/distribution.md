@@ -1,12 +1,30 @@
 # Distributing your provider
 
-This guide explains how to produce a standalone binary from your TypeScript provider and publish it to the Terraform Registry so Terraform users can install it with a normal `required_providers` block.
+This guide explains how to build, package, sign, and publish a terrably-based
+provider to the Terraform Registry so operators can install it with a normal
+`required_providers` block.
+
+---
+
+## Table of contents
+
+1. [Why distribute as a binary?](#why-distribute-as-a-binary)
+2. [Prerequisites](#prerequisites)
+3. [Build a binary locally](#build-a-binary-locally)
+4. [Multi-platform release with `terrably publish`](#multi-platform-release)
+5. [GitHub Actions release workflow](#github-actions-release-workflow)
+6. [Connecting to the Terraform Registry](#connecting-to-the-terraform-registry)
+7. [Platform support matrix](#platform-support-matrix)
+8. [Versioning](#versioning)
 
 ---
 
 ## Why distribute as a binary?
 
-Operators who consume your provider should not need to install Node.js. A **Node.js Single Executable Application (SEA)** bundles the JS runtime into a single native binary — just like a Go provider binary — so Terraform can launch it directly.
+Operators who consume your provider should not need Node.js installed. A
+**Node.js Single Executable Application (SEA)** bundles the JS runtime into a
+single native binary — just like a Go provider — so Terraform can launch it
+directly.
 
 ---
 
@@ -15,154 +33,175 @@ Operators who consume your provider should not need to install Node.js. A **Node
 | Tool | Version | Notes |
 |---|---|---|
 | Node.js | ≥ 22 | Required for stable `--build-sea` support |
-| GPG | any | For Terraform Registry signature |
-| Terraform CLI | ≥ 1.0 | For local smoke-test |
+| terrably CLI | any | `npm i -g terrably` |
+| GPG | any | To sign the release for the Terraform Registry |
+| GitHub CLI (`gh`) | optional | Alternative to `--github-release` flag |
+| Terraform CLI | ≥ 1.0 | For local smoke-tests |
 
 ---
 
-## Building a binary locally
-
-### 1. Build the binary
+## Build a binary locally
 
 ```bash
-# From your provider's root directory:
-pnpm build:sea
-# or directly:
-node scripts/build-sea.mjs --name mycloud --out bin/
+# From your provider root:
+terrably build
+
+# Output: bin/terraform-provider-mycloud  (120-130 MB, Node.js runtime embedded)
 ```
 
-The script:
-1. Bundles all JS + `node_modules` into a single CJS file
-2. Generates a SEA entry-point that extracts the `.proto` files from embedded assets into a temp directory at startup (so `@grpc/proto-loader` can read them)
-3. Writes a `sea-config.json` referencing the three proto files as assets
-4. Runs `node --build-sea sea-config.json` to produce the final binary
-5. On macOS, runs `codesign --sign -` (ad-hoc signature)
+`terrably build` automatically:
+1. Runs `tsc` to compile TypeScript
+2. Bundles with esbuild (single CJS file)
+3. Generates a SEA entry-point that extracts the embedded `.proto` files into a
+   temp dir at startup
+4. Runs `node --build-sea` to produce the final binary
+5. On macOS, runs `codesign --sign -` (ad-hoc signature required for execution)
 
-Output: `bin/terraform-provider-mycloud`
-
-Size is typically 120–130 MB (the Node.js runtime is embedded).
-
-### 3. Smoke-test the binary
+### Smoke-test the binary
 
 ```bash
-# The binary must receive the magic cookie to start
 TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 \
   ./bin/terraform-provider-mycloud
 # → prints the go-plugin handshake line and blocks
 ```
 
-### 4. Use via dev_overrides
-
-Point your `.terraformrc` at the `bin/` directory and run `terraform plan` normally. The binary behaves identically to the Node.js wrapper script.
-
 ---
 
-## How proto files are handled inside the SEA
+## Multi-platform release
 
-`@grpc/proto-loader` reads `.proto` files from disk. Inside a SEA only built-in Node modules are accessible by default. The build script works around this by:
+### How multi-platform works
 
-1. Embedding the three proto files as **SEA assets** (via the `assets` field in `sea-config.json`)
-2. Generating a preamble in the bundled entry-point that, at startup, extracts those assets to a temporary directory and passes it to `serve()` via the `protoDir` option
-3. Cleaning up the temp directory on process exit
-
-The `protoDir` option is exposed on `ServeOptions` for exactly this use case — if you have a custom build pipeline, you can pass it directly:
-
-```typescript
-import { serve } from "@tfjs/sdk";
-import { MyProvider } from "./provider.js";
-
-// protoDir is set by the SEA preamble via TF_PROTO_DIR env var,
-// or you can pass it explicitly:
-serve(new MyProvider(), { protoDir: process.env["TF_PROTO_DIR"] });
-```
-
----
-
-## Publishing to the Terraform Registry
-
-The [Terraform Registry](https://registry.terraform.io) distributes providers as GitHub releases. The process is:
+Node.js SEA does **not** support cross-compilation — a binary built on macOS
+will not run on Linux. The solution is a CI matrix that builds natively on each
+platform, then a single packaging step that assembles all binaries into the
+release assets the Terraform Registry requires.
 
 ```
-GPG key → GitHub repo → tag a release → registry indexes automatically
+CI matrix (one job per platform)
+  └─ terrably build  →  bin/terraform-provider-mycloud{_os_arch}
+
+Packaging job
+  └─ terrably publish  →  release/
+       terraform-provider-mycloud_1.0.0_linux_amd64.zip
+       terraform-provider-mycloud_1.0.0_linux_arm64.zip
+       terraform-provider-mycloud_1.0.0_darwin_amd64.zip
+       terraform-provider-mycloud_1.0.0_darwin_arm64.zip
+       terraform-provider-mycloud_1.0.0_windows_amd64.zip
+       terraform-provider-mycloud_1.0.0_manifest.json
+       terraform-provider-mycloud_1.0.0_SHA256SUMS
+       terraform-provider-mycloud_1.0.0_SHA256SUMS.sig
 ```
 
-### Step 1: Repository naming
+### Required release asset layout
 
-Your GitHub repository **must** be named `terraform-provider-{name}`, e.g.:
+The Terraform Registry validates that each release has exactly this structure:
+
+| File | Description |
+|---|---|
+| `terraform-provider-{name}_{ver}_{os}_{arch}.zip` | One zip per platform containing the binary |
+| `terraform-provider-{name}_{ver}_manifest.json` | Protocol version declaration |
+| `terraform-provider-{name}_{ver}_SHA256SUMS` | SHA-256 of every zip + manifest |
+| `terraform-provider-{name}_{ver}_SHA256SUMS.sig` | Binary GPG detach-signature of the checksum file |
+
+The binary **inside** each zip must be named `terraform-provider-{name}_v{ver}`
+(no OS/arch suffix, no `.exe` — Terraform appends `.exe` on Windows itself).
+
+### `terrably publish`
+
+`terrably publish` does all the packaging work: zipping, manifest generation,
+checksum computation, GPG signing, and optional GitHub Release creation.
 
 ```
-github.com/acme/terraform-provider-mycloud
+terrably publish [options]
+
+Options:
+  --release-version <v>   Version (e.g. 1.2.3 or v1.2.3); defaults to version in package.json
+  --name <n>              Provider short name (e.g. mycloud); defaults to package.json name
+  --binaries-dir <dir>    Directory containing per-platform binaries  (default: bin/)
+  --out <dir>             Output directory for release assets          (default: release/)
+  --protocol-version <v>  Terraform protocol version: 5.0 or 6.0      (default: 6.0)
+  --gpg-key <fp>          GPG key fingerprint/email for signing        (default: $GPG_FINGERPRINT)
+  --github-release        Create GitHub Release and upload all assets  (requires $GITHUB_TOKEN)
+  --draft                 Create the release as a draft
+  --tag <tag>             Git tag name                                 (default: v{version})
 ```
 
-### Step 2: Register a GPG key
+**Binary naming convention** (`--binaries-dir`):
+Files in the binaries directory must be named `terraform-provider-{name}_{os}_{arch}[.exe]`:
 
-Generate a GPG key (4096-bit RSA, no expiry) and add the public key to your Terraform Registry account:
+```
+bin/
+  terraform-provider-mycloud_linux_amd64
+  terraform-provider-mycloud_linux_arm64
+  terraform-provider-mycloud_linux_arm
+  terraform-provider-mycloud_darwin_amd64
+  terraform-provider-mycloud_darwin_arm64
+  terraform-provider-mycloud_windows_amd64.exe
+```
+
+If only one binary is present with no platform suffix (e.g. the plain
+`terraform-provider-mycloud` produced by `terrably build`), it is treated as the
+current platform — useful for quick local testing.
+
+### Local packaging workflow
 
 ```bash
-gpg --full-generate-key          # choose RSA 4096, no expiry
-gpg --export --armor <KEY_ID>    # copy the public key block
+# 1. Generate all per-platform binaries (see CI workflow below for automation)
+#    Each CI job produces ONE binary named with its OS/arch suffix.
+#    For a local single-platform test:
+terrably build
+mv bin/terraform-provider-mycloud bin/terraform-provider-mycloud_$(uname -s | tr '[:upper:]' '[:lower:]')_amd64
+
+# 2. Package, sign, and preview locally (skips --github-release)
+GPG_FINGERPRINT=your@email.com \
+  terrably publish --release-version 1.0.0
+
+# Output preview:
+#   release/terraform-provider-mycloud_1.0.0_linux_amd64.zip    XX KB
+#   release/terraform-provider-mycloud_1.0.0_manifest.json       0 KB
+#   release/terraform-provider-mycloud_1.0.0_SHA256SUMS           0 KB
+#   release/terraform-provider-mycloud_1.0.0_SHA256SUMS.sig       0 KB
 ```
 
-Go to [registry.terraform.io → your namespace → GPG Keys](https://registry.terraform.io/settings/gpg-keys) and paste it. Store the private key as a GitHub Actions secret named `GPG_PRIVATE_KEY` and the passphrase as `GPG_PASSPHRASE`.
+---
 
-### Step 3: Add the registry manifest
+## GitHub Actions release workflow
 
-Each zip artifact must contain a `terraform-registry-manifest.json`:
-
-```json
-{
-  "version": 1,
-  "metadata": {
-    "protocol_versions": ["6.0"]
-  }
-}
-```
-
-`"6.0"` matches tfplugin6, which is what this SDK implements.
-
-### Step 4: Understand the required release artifacts
-
-For a version `v1.2.3` and provider named `mycloud`, the GitHub release must have:
-
-| File | Contents |
-|---|---|
-| `terraform-provider-mycloud_1.2.3_linux_amd64.zip` | binary + manifest |
-| `terraform-provider-mycloud_1.2.3_linux_arm64.zip` | binary + manifest |
-| `terraform-provider-mycloud_1.2.3_darwin_amd64.zip` | binary + manifest |
-| `terraform-provider-mycloud_1.2.3_darwin_arm64.zip` | binary + manifest |
-| `terraform-provider-mycloud_1.2.3_windows_amd64.zip` | binary + manifest |
-| `terraform-provider-mycloud_1.2.3_SHA256SUMS` | sha256 of every zip |
-| `terraform-provider-mycloud_1.2.3_SHA256SUMS.sig` | GPG signature of the above |
-
-The **binary inside each zip** must be named `terraform-provider-mycloud_v1.2.3` (no `.exe` extension, even on Windows — Terraform handles the extension itself).
-
-### Step 5: GitHub Actions release workflow
-
-Create `.github/workflows/release.yml` in your provider repository:
+Create `.github/workflows/release.yml` in your provider repository. Replace
+`mycloud` with your provider's short name.
 
 ```yaml
 name: Release
 
+# Triggers on any tag matching v* (e.g. v1.0.0, v1.2.3-beta)
 on:
   push:
     tags:
       - 'v*'
 
 permissions:
-  contents: write   # needed to create the GitHub release
+  contents: write   # needed to create the GitHub Release
+
+env:
+  PROVIDER_NAME: mycloud   # ← change this
 
 jobs:
+  # ── Build: one job per OS/arch, runs terrably build natively ─────────────
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.os }}_${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
-          - { os: linux,   arch: amd64, runner: ubuntu-latest,   ext: "" }
-          - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm, ext: "" }
-          - { os: darwin,  arch: amd64, runner: macos-13,        ext: "" }
-          - { os: darwin,  arch: arm64, runner: macos-14,        ext: "" }
-          - { os: windows, arch: amd64, runner: windows-latest,  ext: ".exe" }
+          # Primary targets (required for HCP Terraform compatibility)
+          - { os: linux,   arch: amd64, runner: ubuntu-latest    }
+          - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm }
+          - { os: darwin,  arch: amd64, runner: macos-13         }
+          - { os: darwin,  arch: arm64, runner: macos-latest     }
+          - { os: windows, arch: amd64, runner: windows-latest   }
+          # Extended targets (optional)
+          - { os: linux,   arch: arm,   runner: ubuntu-24.04-arm }
+          - { os: linux,   arch: "386", runner: ubuntu-latest    }
 
     steps:
       - uses: actions/checkout@v4
@@ -170,99 +209,130 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
-        # or: pnpm install
-
-      - name: Build TypeScript
-        run: npx tsc
 
       - name: Build SEA binary
         shell: bash
         run: |
-          VERSION="${{ github.ref_name }}"        # e.g. v1.2.3
-          VERSION_NUM="${VERSION#v}"              # e.g. 1.2.3
-          PROVIDER_NAME="mycloud"
-          BINARY="terraform-provider-${PROVIDER_NAME}_v${VERSION_NUM}"
+          npx terrably build --name "$PROVIDER_NAME"
 
-          node scripts/build-sea.mjs --name "${PROVIDER_NAME}" --out staging/
-          # Rename to the versioned name expected by the registry
-          mv "staging/terraform-provider-${PROVIDER_NAME}${{ matrix.ext }}" \
-             "staging/${BINARY}${{ matrix.ext }}"
+      - name: Rename binary with platform suffix
+        shell: bash
+        run: |
+          EXT=""
+          if [ "${{ matrix.os }}" = "windows" ]; then EXT=".exe"; fi
+          mv "bin/terraform-provider-${PROVIDER_NAME}${EXT}" \
+             "bin/terraform-provider-${PROVIDER_NAME}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
 
-          # Create the registry manifest
-          cat > staging/terraform-registry-manifest.json <<'EOF'
-          {"version":1,"metadata":{"protocol_versions":["6.0"]}}
-          EOF
-
-          # Zip: binary + manifest
-          cd staging
-          ZIP_NAME="terraform-provider-${PROVIDER_NAME}_${VERSION_NUM}_${{ matrix.os }}_${{ matrix.arch }}.zip"
-          zip "${ZIP_NAME}" "${BINARY}${{ matrix.ext }}" terraform-registry-manifest.json
-          echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
-          echo "ZIP_PATH=staging/${ZIP_NAME}" >> $GITHUB_ENV
-
-      - name: Upload zip artifact
+      - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: provider-${{ matrix.os }}-${{ matrix.arch }}
-          path: staging/*.zip
+          name: binary-${{ matrix.os }}-${{ matrix.arch }}
+          path: bin/terraform-provider-${{ env.PROVIDER_NAME }}_${{ matrix.os }}_${{ matrix.arch }}*
           if-no-files-found: error
+          retention-days: 1
 
+  # ── Release: collect all binaries, package, sign, publish ────────────────
   release:
-    name: Create GitHub Release
+    name: Publish to GitHub Releases
     needs: build
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download all platform binaries
         uses: actions/download-artifact@v4
         with:
-          path: artifacts/
+          path: bin/
+          pattern: binary-*
           merge-multiple: true
 
-      - name: Compute SHA256SUMS
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          # Extract fingerprint for signing
+          FP=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+          echo "GPG_FINGERPRINT=${FP}" >> "$GITHUB_ENV"
+
+      - name: Package, sign, and publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ github.ref_name }}"
-          VERSION_NUM="${VERSION#v}"
-          PROVIDER_NAME="mycloud"
-          SUMS_FILE="terraform-provider-${PROVIDER_NAME}_${VERSION_NUM}_SHA256SUMS"
-          cd artifacts
-          sha256sum *.zip > "${SUMS_FILE}"
-          echo "SUMS_FILE=${SUMS_FILE}" >> $GITHUB_ENV
-
-      - name: Sign SHA256SUMS with GPG
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-          GPG_PASSPHRASE:  ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          echo "${GPG_PRIVATE_KEY}" | gpg --batch --import
-          cd artifacts
-          echo "${GPG_PASSPHRASE}" | gpg --batch --yes --passphrase-fd 0 \
-            --detach-sign --armor "${SUMS_FILE}"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
-          generate_release_notes: true
+          npx terrably publish \
+            --release-version "${VERSION}" \
+            --gpg-key         "${GPG_FINGERPRINT}" \
+            --github-release
 ```
 
-### Step 6: Connect to the Terraform Registry
+### Required GitHub Actions secrets
 
-1. Go to [registry.terraform.io](https://registry.terraform.io) → **Publish** → **Provider**
-2. Select your GitHub organization and the `terraform-provider-mycloud` repository
-3. The registry will detect your GPG key (from Step 2) and index the latest release
-4. Future releases are picked up automatically when you push a new `v*` tag
+| Secret | Description |
+|---|---|
+| `GPG_PRIVATE_KEY` | ASCII-armored private key: `gpg --armor --export-secret-keys <ID>` |
+| `PASSPHRASE` | GPG key passphrase (omit step if the key has no passphrase) |
 
-### Step 7: Verify the published provider
+`GITHUB_TOKEN` is injected automatically by GitHub Actions — no manual setup needed.
+
+### Testing the workflow
 
 ```bash
-# In a fresh directory, with no .terraformrc overrides:
-cat > main.tf <<'EOF'
+# Tag and push to trigger the workflow
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Once the workflow completes, go to your repository's **Releases** page to verify
+all assets were uploaded correctly.
+
+---
+
+## Connecting to the Terraform Registry
+
+### 1. Repository naming
+
+Your GitHub repository **must** be named `terraform-provider-{name}` (all lowercase):
+
+```
+github.com/acme/terraform-provider-mycloud
+```
+
+### 2. Generate and register a GPG key
+
+```bash
+# Generate a 4096-bit RSA key (ECC keys are not accepted by the registry)
+gpg --full-generate-key
+# Choose: RSA and RSA, 4096 bits, key does not expire
+
+# Export the public key
+gpg --armor --export your@email.com
+```
+
+Go to [registry.terraform.io → Settings → GPG Keys](https://registry.terraform.io/settings/gpg-keys)
+and paste the public key block. Add it under the namespace that owns your provider.
+
+### 3. Publish from the registry UI
+
+1. Go to [registry.terraform.io → Publish → Provider](https://registry.terraform.io/publish/provider)
+2. Select your GitHub organisation and the `terraform-provider-mycloud` repository
+3. The registry creates a webhook — future `v*` releases are indexed automatically
+
+### 4. Verify the published provider
+
+```hcl
+# main.tf
 terraform {
   required_providers {
     mycloud = {
@@ -271,8 +341,9 @@ terraform {
     }
   }
 }
-EOF
+```
 
+```bash
 terraform init    # downloads and verifies the binary
 terraform plan
 ```
@@ -281,21 +352,59 @@ terraform plan
 
 ## Platform support matrix
 
-| Platform | Runner | SEA supported |
-|---|---|---|
-| Linux x86-64 | `ubuntu-latest` | ✅ |
-| Linux arm64 | `ubuntu-24.04-arm` | ✅ |
-| macOS arm64 (Apple Silicon) | `macos-14` | ✅ requires `codesign` |
-| macOS x86-64 (Intel) | `macos-13` | ✅ requires `codesign` |
-| Windows x86-64 | `windows-latest` | ✅ |
-| Alpine Linux (musl) | — | ⚠️ untested (Node.js SEA uses glibc) |
+Terrably follows the [Terraform Registry recommended combinations](https://developer.hashicorp.com/terraform/registry/providers/os-arch):
 
-> **Cross-compilation**: Node.js SEA does not support building for a different OS/arch on the same machine. Use the GitHub Actions matrix to build natively on each platform.
+| Platform | GitHub Actions runner | Priority |
+|---|---|---|
+| Linux x86-64 (`linux_amd64`) | `ubuntu-latest` | **Required** for HCP Terraform |
+| Linux arm64 (`linux_arm64`) | `ubuntu-24.04-arm` | Recommended |
+| Linux armv6 (`linux_arm`) | `ubuntu-24.04-arm` | Recommended |
+| Linux 386 (`linux_386`) | `ubuntu-latest` | Optional |
+| macOS arm64 (`darwin_arm64`) | `macos-latest` | Recommended |
+| macOS x86-64 (`darwin_amd64`) | `macos-13` | Recommended |
+| Windows x86-64 (`windows_amd64`) | `windows-latest` | Recommended |
+| Windows 386 (`windows_386`) | `windows-latest` | Optional |
+| FreeBSD (`freebsd_*`) | self-hosted | Optional |
+
+> **Cross-compilation is not supported.** A Node.js SEA binary is platform-native.
+> Each platform requires its own runner in the CI matrix.
 
 ---
 
-## Versioning and changelog
+## How proto files are handled inside the SEA
 
-Follow the [Terraform provider versioning convention](https://developer.hashicorp.com/terraform/plugin/best-practices/versioning): `MAJOR.MINOR.PATCH` with a `v` prefix tag (`v1.0.0`).
+`@grpc/proto-loader` reads `.proto` files from disk. Inside a SEA only built-in
+Node modules are accessible. `terrably build` works around this by:
 
-Increment `MAJOR` for any breaking schema changes (removed attributes, type changes). Increment `MINOR` for new resources or attributes. Use `upgrade()` in resources to migrate old state when bumping the schema `version` field.
+1. Embedding the three proto files as **SEA assets** (via the `assets` field in
+   `sea-config.json`)
+2. Generating a preamble in the entry-point that extracts those assets to a
+   temporary directory at startup and sets `TF_PROTO_DIR`
+3. Cleaning up the temp directory on process exit
+
+If you have a custom build pipeline, pass `protoDir` explicitly:
+
+```typescript
+import { serve } from "terrably";
+import { MyProvider } from "./provider.js";
+
+serve(new MyProvider(), { protoDir: process.env["TF_PROTO_DIR"] });
+```
+
+---
+
+## Versioning
+
+Follow [Semantic Versioning](https://semver.org/) with a `v` prefix (`v1.0.0`).
+
+| Change | Bump |
+|---|---|
+| Breaking schema change (removed attribute, type change) | `MAJOR` |
+| New resource, data source, or attribute | `MINOR` |
+| Bug fix, performance improvement | `PATCH` |
+| Pre-release (`-alpha.1`, `-beta.2`) | Explicit opt-in via version constraint |
+
+When bumping the `version` field on a resource `Schema`, implement `upgrade()` to
+migrate old state — see the `Resource.upgrade()` method in the API reference.
+
+
