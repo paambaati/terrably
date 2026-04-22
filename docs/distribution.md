@@ -16,6 +16,7 @@ provider to the Terraform Registry so operators can install it with a normal
 6. [Connecting to the Terraform Registry](#connecting-to-the-terraform-registry)
 7. [Platform support matrix](#platform-support-matrix)
 8. [Versioning](#versioning)
+9. [Schema changes and state migration](#publishing-a-new-version)
 
 ---
 
@@ -387,5 +388,167 @@ Follow [Semantic Versioning](https://semver.org/) with a `v` prefix (`v1.0.0`).
 | Bug fix, performance improvement | `PATCH` |
 | Pre-release (`-alpha.1`, `-beta.2`) | Explicit opt-in via version constraint |
 
-When bumping the `version` field on a resource `Schema`, implement `upgrade()` to
-migrate old state — see the `Resource.upgrade()` method in the API reference.
+When bumping the `version` field on a resource `Schema`, implement `upgrade()` to migrate old state.
+
+---
+
+### Schema version changes and state migration
+
+Every resource's `Schema` carries an integer `version` (default `0`). When
+Terraform refreshes or plans a resource, it compares the schema version stored
+in state against the current one. If they differ, it calls `Resource.upgrade()`
+for each intervening version until the state is current.
+
+**Increment the version whenever the shape of state changes**
+
+```typescript
+// Before (v0)
+getSchema(): Schema {
+  return new Schema([
+    new Attribute("id",     types.string(), { computed: true }),
+    new Attribute("zone",   types.string(), { required: true }),  // ← will be renamed
+    new Attribute("size_gb", types.number(), { required: true }),
+  ], [], 0);  // ← schema version 0
+}
+
+// After (v1) — "zone" renamed to "availability_zone"
+getSchema(): Schema {
+  return new Schema([
+    new Attribute("id",                  types.string(), { computed: true }),
+    new Attribute("availability_zone",   types.string(), { required: true }),
+    new Attribute("size_gb",             types.number(), { required: true }),
+  ], [], 1);  // ← schema version bumped to 1
+}
+```
+
+#### Implementing `upgrade()`
+
+`upgrade()` receives the raw stored state and the version it was saved at.
+Return the state reshaped to match the **current** schema.
+
+```typescript
+upgrade(ctx: UpgradeContext, version: number, old: State): State {
+  // Always use a switch so you can chain future upgrades safely
+  switch (version) {
+    case 0: {
+      // v0 → v1: rename "zone" to "availability_zone"
+      const { zone, ...rest } = old;
+      return {
+        ...rest,
+        availability_zone: zone,
+      };
+    }
+    default:
+      // Should never happen — terrably only calls upgrade() for older versions
+      ctx.diagnostics.addError(
+        "Unknown schema version",
+        `Cannot upgrade state from version ${version}.`,
+      );
+      return old;
+  }
+}
+```
+
+#### Chaining multiple version upgrades
+
+If you have already shipped `v1` and now need `v2`, add a new `case` and bump `Schema` to `2`. Terraform will call `upgrade()` once per stored version, so a resource saved at `v0` will go through `case 0` then `case 1` in sequence.
+
+```typescript
+upgrade(ctx: UpgradeContext, version: number, old: State): State {
+  switch (version) {
+    case 0: {
+      // v0 → v1: rename "zone" → "availability_zone"
+      const { zone, ...rest } = old;
+      return this.upgrade(ctx, 1, { ...rest, availability_zone: zone });
+    }
+    case 1: {
+      // v1 → v2: split "size_gb" into "disk_size_gb" + "disk_type"
+      const { size_gb, ...rest } = old;
+      return {
+        ...rest,
+        disk_size_gb: size_gb,
+        disk_type: "ssd",   // default for previously created resources
+      };
+    }
+    default:
+      ctx.diagnostics.addError(
+        "Unknown schema version",
+        `Cannot upgrade state from version ${version}.`,
+      );
+      return old;
+  }
+}
+```
+
+---
+
+### Common migration patterns
+
+#### Rename an attribute
+
+```typescript
+case 0: {
+  const { old_name, ...rest } = old;
+  return { ...rest, new_name: old_name };
+}
+```
+
+#### Remove an attribute (drop from state)
+
+```typescript
+case 0: {
+  const { deprecated_field, ...rest } = old;  // eslint-disable-line @typescript-eslint/no-unused-vars
+  return rest;
+}
+```
+
+#### Change a type — string to number
+
+```typescript
+case 0: {
+  return {
+    ...old,
+    // stored as "42", needs to become 42
+    port: Number(old["port"] as string),
+  };
+}
+```
+
+#### Split one attribute into two
+
+```typescript
+case 0: {
+  const { endpoint, ...rest } = old;
+  const url = new URL(endpoint as string);
+  return {
+    ...rest,
+    host: url.hostname,
+    port: Number(url.port) || 443,
+  };
+}
+```
+
+#### Add a new required attribute to existing resources
+
+Don't bump schema version for this. Instead, declare the attribute as `optional: true, computed: true` with a sensible `default`. Existing state objects will read back `null`; your `read()` can detect `null` and backfill the value from the live API on the next refresh, which Terraform then records.
+
+```typescript
+// NEW attribute — use optional+computed so existing state is valid
+new Attribute("disk_type", types.string(), {
+  optional: true,
+  computed: true,
+  default: "ssd",
+  description: "Disk type for the volume. Defaults to `ssd`.",
+})
+```
+
+```typescript
+read(ctx: ReadContext, current: State): State {
+  const live = await this.api.getServer(current["id"] as string);
+  return {
+    ...current,
+    ...live,
+    // Backfill on first read of a resource created before this attribute existed
+    disk_type: live.diskType ?? current["disk_type"] ?? "ssd",
+  };
+}
