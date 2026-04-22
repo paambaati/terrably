@@ -18,7 +18,7 @@
     "proto:gen": "node scripts/gen-proto.js",
     "build": "pnpm run proto:gen && tsc && cp -r src/cli/templates dist/src/cli/",
     "dev": "tsc --watch",
-    "lint": "oxlint --type-aware src/",
+    "lint": "oxlint --type-aware --type-check src/",
     "lint:fix": "oxlint --fix src/",
     "format": "oxfmt src/",
     "test": "node --require tsx/cjs --test 'src/*.test.ts'"
