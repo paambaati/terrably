@@ -55,7 +55,6 @@ import type {
   FunctionMessage,
   ServerCapabilities} from "../gen/tfplugin6.js";
 import {
-  FunctionError,
   Diagnostic_Severity,
   StringKind,
 } from "../gen/tfplugin6.js";
@@ -80,10 +79,10 @@ import type {
   GenerateResourceConfig_Request,
 } from "../gen/tfplugin6.js";
 
-import type { Provider, Resource, DataSource, ResourceClass, DataSourceClass, FunctionClass, TerrablyFunction } from "./interfaces.js";
+import type { Provider, Resource, DataSource, ResourceClass, DataSourceClass, FunctionClass, TerrablyFunction, FunctionSignature, PlanContext } from "./interfaces.js";
 import { Diagnostics } from "./interfaces.js";
 import { readDynamicValue, toDynamicValue, diagsToPb } from "./encoding.js";
-import { encodeBlock, decodeBlock, type State } from "./schema.js";
+import { encodeBlock, decodeBlock, type State, type DescriptionKind } from "./schema.js";
 import { Unknown } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -106,11 +105,11 @@ function errorResponse<T extends object>(
   } as unknown as T;
 }
 
-function descKindToPb(kind: import("./schema.js").DescriptionKind | undefined): StringKind {
+function descKindToPb(kind: DescriptionKind | undefined): StringKind {
   return kind === "plain" ? StringKind.PLAIN : StringKind.MARKDOWN;
 }
 
-function signatureToPb(sig: import("./interfaces.js").FunctionSignature): FunctionMessage {
+function signatureToPb(sig: FunctionSignature): FunctionMessage {
   return {
     parameters: sig.parameters.map((p) => ({
       name: p.name,
@@ -490,7 +489,7 @@ export class ProviderServicer {
       .filter((k) => k in attrs && attrs[k].requiresReplace)
       .map((k) => ({ steps: [{ attributeName: k }] }));
 
-    const ctx: import("./interfaces.js").PlanContext = {
+    const ctx: PlanContext = {
       diagnostics: diags,
       typeName: req.typeName,
       changedFields,

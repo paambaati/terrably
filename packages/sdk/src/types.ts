@@ -17,7 +17,7 @@ class _Unknown {
 export const Unknown = new _Unknown();
 export type UnknownType = typeof Unknown;
 
-export type TfValue = unknown | UnknownType | null;
+export type TfValue = unknown;
 
 export interface TfType<T = unknown> {
   encode(value: T | null | UnknownType): TfValue;
@@ -37,7 +37,7 @@ export class TfString implements TfType<string> {
   }
   decode(v: TfValue): string | null | UnknownType {
     if (v instanceof _Unknown || v === null) return v as UnknownType | null;
-    return String(v);
+    return String(v as string | number | boolean);
   }
   semanticallyEqual(a: TfValue, b: TfValue) {
     return a === b;
@@ -84,11 +84,11 @@ export class TfBool implements TfType<boolean> {
  * with sorted keys so Terraform never sees a spurious diff from key reordering.
  */
 export class TfNormalizedJson implements TfType<unknown> {
-  encode(v: unknown | null | UnknownType): TfValue {
+  encode(v: unknown): TfValue {
     if (v instanceof _Unknown || v === null) return v;
     return JSON.stringify(v, Object.keys(v as object).sort());
   }
-  decode(v: TfValue): unknown | null | UnknownType {
+  decode(v: TfValue): unknown {
     if (v instanceof _Unknown || v === null) return v as UnknownType | null;
     try {
       return JSON.parse(v as string);

@@ -7,11 +7,6 @@ import * as esbuild from "esbuild";
 // Proto files live at <terrably-pkg>/proto/ — four levels up.
 const SDK_PROTO_DIR = path.resolve(__dirname, "..", "..", "..", "..", "proto");
 
-function getArg(options: Record<string, unknown>, key: string): string | null {
-  const v = options[key];
-  return typeof v === "string" ? v : null;
-}
-
 export async function buildCommand(options: { name?: string; out?: string }): Promise<void> {
   const providerRoot = process.cwd();
 

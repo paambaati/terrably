@@ -133,7 +133,7 @@ export interface FunctionSignature {
 export interface TerrablyFunction {
   getName(): string;
   getSignature(): FunctionSignature;
-  call(ctx: FunctionCallContext, args: unknown[]): unknown | Promise<unknown>;
+  call(ctx: FunctionCallContext, args: unknown[]): unknown;
 }
 
 export type FunctionClass = new (provider: Provider) => TerrablyFunction;

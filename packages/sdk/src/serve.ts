@@ -17,6 +17,7 @@
  *   TF_LOG / TF_LOG_PROVIDER – structured log level (see logger.ts)
  */
 
+import type * as SelfsignedLib from "selfsigned";
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import * as os from "node:os";
@@ -86,8 +87,8 @@ async function getSelfSignedCert(): Promise<CachedCert> {
   }
 
   // Generate using the selfsigned package (pure-JS, no native dependencies)
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const selfsigned = require("selfsigned") as typeof import("selfsigned");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const selfsigned = require("selfsigned") as typeof SelfsignedLib;
   const attrs = [{ name: "commonName", value: "localhost" }];
   const pems = await selfsigned.generate(attrs, {
     keySize: 2048,

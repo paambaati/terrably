@@ -77,7 +77,7 @@ async function startDevMode(
       }
     });
 
-    proc.stderr?.on("data", (d: Buffer) => process.stderr.write(`[provider] ${d}`));
+    proc.stderr?.on("data", (d: Buffer) => process.stderr.write(`[provider] ${d.toString()}`));
 
     proc.on("exit", (code) => {
       clearTimeout(timer);
