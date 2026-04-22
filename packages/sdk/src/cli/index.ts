@@ -105,7 +105,7 @@ cli.on("command:*", () => {
   process.exit(1);
 });
 
-(async () => {
+void (async () => {
   try {
     cli.parse(process.argv, { run: false });
     await cli.runMatchedCommand();

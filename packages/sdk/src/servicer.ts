@@ -10,8 +10,7 @@
 import type {
   DeepPartial,
   Schema,
-} from "../gen/tfplugin6.js";
-import {
+
   GetMetadata_Response,
   GetProviderSchema_Response,
   ValidateProviderConfig_Response,
@@ -54,8 +53,9 @@ import {
   UpgradeResourceIdentity_Response,
   GenerateResourceConfig_Response,
   FunctionMessage,
+  ServerCapabilities} from "../gen/tfplugin6.js";
+import {
   FunctionError,
-  ServerCapabilities,
   Diagnostic_Severity,
   StringKind,
 } from "../gen/tfplugin6.js";

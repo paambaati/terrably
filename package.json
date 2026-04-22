@@ -4,16 +4,22 @@
   "scripts": {
     "build": "pnpm -r run build",
     "proto:gen": "pnpm --filter terrably run proto:gen",
-    "test": "pnpm -r run test --if-present"
+    "test": "pnpm -r run test --if-present",
+    "lint": "pnpm -r run lint --if-present",
+    "lint:fix": "pnpm -r run lint:fix --if-present",
+    "format": "pnpm -r run format --if-present"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
     "esbuild": "0.28.0",
+    "oxfmt": "0.46.0",
+    "oxlint": "1.61.0",
+    "oxlint-tsgolint": "0.21.1",
     "tsx": "4.21.0",
     "typescript": "6.0.3"
   },
   "dependencies": {
-    "adm-zip": "^0.5.17",
-    "pino": "^10.3.1"
+    "adm-zip": "0.5.17",
+    "pino": "10.3.1"
   }
 }
