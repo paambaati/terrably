@@ -2,16 +2,6 @@
 
 A working Terraform provider written in TypeScript using `terrably`, targeting a fake "DummyCloud" REST API.
 
-## Contents
-
-| Path | Purpose |
-|---|---|
-| `api-server/index.ts` | In-memory REST API server (Hono) simulating a cloud provider |
-| `src/provider.ts` | `DummyCloudProvider` — implements the `Provider` interface |
-| `src/resources/server.ts` | `DummyCloudServer` — manages `dummycloud_server` resources |
-| `src/main.ts` | Entry point — calls `serve()` from the SDK |
-| `tests/e2e.ts` | End-to-end test: spins up API + provider, runs `terraform apply/destroy` |
-
 ## Resource schema
 
 ```hcl
