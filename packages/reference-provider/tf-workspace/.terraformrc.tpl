@@ -2,7 +2,7 @@
 # To regenerate: pnpm run build:binary
 provider_installation {
   dev_overrides {
-    "example/dummycloud" = "/Users/ganeshprasannah/Projects/terraform-provider-js/packages/reference-provider/bin"
+    "example/dummycloud" = "__BIN_DIR__"
   }
   direct {}
 }

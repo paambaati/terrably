@@ -6,10 +6,11 @@ node_modules/
 *.d.ts.map
 
 # Compiled provider binaries (SEA)
-packages/example-provider/bin-sea/
-packages/example-provider/bin/terraform-provider-*
 packages/reference-provider/bin-sea/
 packages/reference-provider/bin/terraform-provider-*
+
+# Generated Terraform dev config (contains machine-specific absolute path)
+packages/reference-provider/tf-workspace/.terraformrc
 
 # SEA build intermediates
 packages/*/dist/_sea_bundle.cjs
