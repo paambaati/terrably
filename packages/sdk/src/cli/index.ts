@@ -14,6 +14,7 @@ import { newCommand } from "./commands/new.js";
 import { buildCommand } from "./commands/build.js";
 import { checkCommand } from "./commands/check.js";
 import { publishCommand } from "./commands/publish.js";
+import { version } from "../../package.json";
 
 const cli = cac("terrably");
 
@@ -95,7 +96,7 @@ cli
 // Global flags + boot
 // ---------------------------------------------------------------------------
 
-cli.version("0.1.0");
+cli.version(version);
 cli.help();
 
 // Unknown command handler

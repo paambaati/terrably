@@ -1,7 +1,7 @@
 {
   "name": "terrably",
   "version": "0.1.0",
-  "description": "TypeScript-native Terraform provider plugin framework (tfplugin6 / Protocol v6)",
+  "description": "TypeScript-native Terraform provider authoring framework",
   "files": [
     "dist/",
     "proto/"
