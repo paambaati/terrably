@@ -27,6 +27,8 @@
   },
   "scripts": {
     "proto:gen": "node scripts/gen-proto.js",
+    "prepack": "copyfiles ../../README.md ./README.md",
+    "postpack": "shx rm ./README.md",
     "build": "pnpm run proto:gen && tsc && cp -r src/cli/templates dist/src/cli/",
     "dev": "tsc --watch",
     "lint": "oxlint --type-aware --type-check src/",
@@ -58,19 +60,16 @@
     "@types/node": "25.6.0",
     "@types/nunjucks": "3.2.6",
     "grpc-tools": "1.13.1",
+    "native-copyfiles": "2.0.1",
     "oxfmt": "0.46.0",
     "oxlint": "1.61.0",
     "oxlint-tsgolint": "0.21.1",
+    "shx": "0.4.0",
     "tsx": "4.21.0",
     "typescript": "6.0.3"
   },
   "engines": {
     "node": ">=22"
   },
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "onFail": "error"
-    }
-  }
+  "packageManager": "pnpm@10.33.1"
 }
