@@ -1,6 +1,6 @@
 # terrably
 
-Write Terraform providers in TypeScript.
+Build Terraform & OpenTofu providers in TypeScript.
 
 ---
 
