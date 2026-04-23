@@ -81,6 +81,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@bufbuild/protobuf':
+        specifier: 2.11.0
+        version: 2.11.0
       '@grpc/grpc-js':
         specifier: 1.14.3
         version: 1.14.3
