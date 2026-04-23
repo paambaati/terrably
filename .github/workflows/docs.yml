@@ -20,12 +20,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        name: Checkout code
 
       - uses: pnpm/action-setup@v5
+        name: Setup pnpm
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 'lts/*'
           cache: 'pnpm'
