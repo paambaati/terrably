@@ -5,14 +5,22 @@
   "type": "commonjs",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build:sea": "terrably build"
+    "build": "terrably build",
+    "check": "terrably check",
+    "publish": "terrably publish"
   },
   "dependencies": {
-    "terrably": "{{ terrablyVersion | default("*")}}"
+    "terrably": "{{ terrablyVersion }}"
   },
   "devDependencies": {
     "@types/node": "25.6.0",
     "tsx": "4.21.0",
     "typescript": "6.0.3"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "esbuild",
+      "protobufjs"
+    ]
   }
 }
