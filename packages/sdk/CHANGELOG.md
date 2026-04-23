@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/paambaati/terrably/compare/v0.0.3...v0.0.4) (2026-04-23)
+
+
+### Bug Fixes
+
+* install @bufbuild/protobuild explicity for the proto generator to work ([fe6447a](https://github.com/paambaati/terrably/commit/fe6447af3b616e681d713c16cb69c4e662dbfe12))
+
 ## [0.0.3](https://github.com/paambaati/terrably/compare/v0.0.2...v0.0.3) (2026-04-23)
 
 
