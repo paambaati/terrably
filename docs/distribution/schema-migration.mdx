@@ -5,7 +5,7 @@ description: Increment schema version, implement upgrade() to migrate stored sta
 
 ## When to bump schema version
 
-Every resource's `Schema` carries an integer `version` (default `0`). Terraform compares the version stored in state against the current one. If they differ, it calls `Resource.upgrade()` once for each intervening version. ([Terraform state upgrade docs](https://developer.hashicorp.com/terraform/plugin/framework/resources/state-upgrade))
+Every resource's `Schema` carries an integer `version` (default `0`). Terraform compares the version stored in state against the current one. If they differ, it calls `Resource.upgrade()` once for each intervening version. Additionally, read [Terraform's state upgrade documentation](https://developer.hashicorp.com/terraform/plugin/framework/resources/state-upgrade).
 
 **Bump the version whenever the shape of stored state changes –**
 
@@ -14,7 +14,7 @@ Every resource's `Schema` carries an integer `version` (default `0`). Terraform 
 | Rename an attribute | Yes |
 | Remove an attribute | Yes |
 | Change an attribute's type | Yes |
-| Add a new attribute (`optional: true, computed: true`) | No — see [Adding new attributes](#adding-new-optional-attributes) |
+| Add a new attribute (`optional: true, computed: true`) | No — see [Adding new attributes](#common-migration-patterns) |
 | Bug fix, description change | No |
 
 ---

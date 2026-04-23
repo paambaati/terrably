@@ -3,9 +3,9 @@ title: Local testing
 description: Two workflows for iterating on your provider locally — dev_overrides for daily development, and dev mode for attaching a debugger.
 ---
 
-## Mode 1 — [dev_overrides](https://developer.hashicorp.com/terraform/cli/config/config-file#development-overrides-for-provider-developers) (recommended)
+## Mode 1 — `dev_overrides` (recommended)
 
-The simplest workflow. Terraform uses your local binary directly instead of downloading from the registry. No `terraform init` required.
+The simplest workflow. Terraform uses your local binary directly instead of downloading from the registry; no `terraform init` required. Read the official [Terraform documentation on dev_overrides](https://developer.hashicorp.com/terraform/cli/config/config-file#development-overrides-for-provider-developers) to learn more.
 
 <Steps>
 <Step>
@@ -143,14 +143,13 @@ serve(new MyProvider(), { dev }).catch(console.error);
 pnpm exec tsc
 
 TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 \
-TF_PLUGIN_DEBUG=1 \
-  node dist/src/main.js
+TF_PLUGIN_DEBUG=1 node dist/src/main.js
 ```
 
 The provider prints:
 
 ```
-Dev mode — set this env var:
+Dev mode — set this environment variable –
 
     export TF_REATTACH_PROVIDERS='{"registry.terraform.io/myorg/mycloud":{"Protocol":"grpc","ProtocolVersion":6,"Pid":12345,"Test":true,"Addr":{"Network":"unix","String":"/tmp/tf-js-provider-12345-...sock"}}}'
 ```
@@ -160,7 +159,7 @@ Dev mode — set this env var:
 
 ### Copy the export and run Terraform
 
-In a **separate shell**:
+In a __separate__ shell –
 
 ```bash
 export TF_REATTACH_PROVIDERS='...paste from above...'

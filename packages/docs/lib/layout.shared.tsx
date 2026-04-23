@@ -6,17 +6,11 @@ export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
       title: (
-        <span className="flex items-center gap-2">
-          <Image
-            src={iconSvg}
-            alt="terrably"
-            width={20}
-            height={20}
-            className="shrink-0"
-            loading="eager"
-            unoptimized
-          />
-          terrably
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-flex shrink-0 size-6 items-center justify-center rounded-md bg-[#1a1a1a] dark:bg-[#2a2a2a] shadow-sm">
+            <Image src={iconSvg} alt="" width={16} height={16} loading="eager" unoptimized aria-hidden />
+          </span>
+          <span className="text-base font-semibold">terrably</span>
         </span>
       ),
       transparentMode: 'top',
