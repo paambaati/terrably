@@ -1,0 +1,176 @@
+---
+title: Local testing
+description: Two workflows for iterating on your provider locally — dev_overrides for daily development, and dev mode for attaching a debugger.
+---
+
+## Mode 1 — `dev_overrides` (recommended)
+
+The simplest workflow. Terraform uses your local binary directly instead of downloading from the registry; no `terraform init` required. Read the official [Terraform documentation on dev_overrides](https://developer.hashicorp.com/terraform/cli/config/config-file#development-overrides-for-provider-developers) to learn more.
+
+<Steps>
+<Step>
+
+### Build the provider binary
+
+```bash
+pnpm run build
+# → bin/terraform-provider-mycloud
+```
+
+Rebuild after any TypeScript change. `terrably build` runs tsc + esbuild + `node --build-sea` in one step.
+
+</Step>
+<Step>
+
+### Configure dev_overrides
+
+Point Terraform at the directory containing your binary:
+
+<Tabs groupId="tfrc" items={["Local file (recommended)", "Global ~/.terraformrc"]}>
+<Tab value="Local file (recommended)">
+
+```hcl title="tf-workspace/.terraformrc"
+provider_installation {
+  dev_overrides {
+    "myorg/mycloud" = "/absolute/path/to/your-provider/bin"
+  }
+  direct {}
+}
+```
+
+Then export the path:
+
+```bash
+export TF_CLI_CONFIG_FILE="$PWD/tf-workspace/.terraformrc"
+```
+
+Keeps your global Terraform config clean.
+
+</Tab>
+<Tab value="Global ~/.terraformrc">
+
+```hcl title="~/.terraformrc"
+provider_installation {
+  dev_overrides {
+    "myorg/mycloud" = "/absolute/path/to/your-provider/bin"
+  }
+  direct {}
+}
+```
+
+Affects all Terraform workspaces on your machine.
+
+</Tab>
+</Tabs>
+
+</Step>
+<Step>
+
+### Write a Terraform config
+
+```hcl title="tf-workspace/main.tf"
+terraform {
+  required_providers {
+    mycloud = { source = "myorg/mycloud" }
+  }
+}
+
+provider "mycloud" {
+  api_url = "http://127.0.0.1:8765"
+}
+
+resource "mycloud_server" "example" {
+  name   = "hello"
+  region = "us-east-1"
+}
+```
+
+</Step>
+<Step>
+
+### Run Terraform
+
+```bash
+cd tf-workspace
+terraform plan
+terraform apply -auto-approve
+terraform destroy -auto-approve
+```
+
+<Callout type="info">
+No `terraform init` needed with `dev_overrides`. Terraform skips the registry lookup and spawns the binary directly.
+</Callout>
+
+</Step>
+</Steps>
+
+### Fast iteration loop
+
+```bash
+# Edit TypeScript → recompile → plan (no restart needed)
+pnpm exec tsc && terraform plan
+```
+
+Each `terraform plan` spawns a fresh process, so there is no server to restart.
+
+---
+
+## Mode 2 — dev mode
+
+Use this when you need to attach a debugger, print detailed logs, or inspect the exact gRPC messages Terraform sends.
+
+The provider starts manually and stays alive. Terraform reconnects to it on each command.
+
+<Steps>
+<Step>
+
+### Enable dev mode in your entry point
+
+```typescript title="src/main.ts"
+import { serve } from "terrably";
+import { MyProvider } from "./provider.js";
+
+const dev = process.argv.includes("--dev") || process.env["TF_PLUGIN_DEBUG"] === "1";
+serve(new MyProvider(), { dev }).catch(console.error);
+```
+
+</Step>
+<Step>
+
+### Build and start the provider
+
+```bash
+pnpm exec tsc
+
+TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 \
+TF_PLUGIN_DEBUG=1 node dist/src/main.js
+```
+
+The provider prints:
+
+```
+Dev mode — set this environment variable –
+
+    export TF_REATTACH_PROVIDERS='{"registry.terraform.io/myorg/mycloud":{"Protocol":"grpc","ProtocolVersion":6,"Pid":12345,"Test":true,"Addr":{"Network":"unix","String":"/tmp/tf-js-provider-12345-...sock"}}}'
+```
+
+</Step>
+<Step>
+
+### Copy the export and run Terraform
+
+In a __separate__ shell –
+
+```bash
+export TF_REATTACH_PROVIDERS='...paste from above...'
+terraform plan
+```
+
+Terraform connects to the running process. Run as many `plan`/`apply` cycles as you like without restarting. Kill the provider with `Ctrl-C` when done.
+
+<Callout type="warn">
+Copy a fresh `TF_REATTACH_PROVIDERS` value every time you restart the provider. The Unix socket path changes on each run.
+</Callout>
+
+</Step>
+</Steps>

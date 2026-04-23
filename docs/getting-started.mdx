@@ -1,0 +1,214 @@
+---
+title: Getting started
+description: Scaffold, implement, build, and test your first Terraform provider in TypeScript in under 10 minutes.
+---
+
+## Prerequisites
+
+| Tool | Version | Notes |
+|---|---|---|
+| Node.js | ≥ 25.5.0 | Required for `--build-sea` (single executable build) |
+| Terraform CLI | ≥ 1.0 | For local plan/apply |
+
+<Steps>
+<Step>
+
+### Scaffold a new project
+
+```npm
+npx terrably new mycloud
+cd terraform-provider-mycloud
+npm install
+```
+
+The scaffold creates a fully-wired starter project –
+
+<Files>
+  <Folder name="terraform-provider-mycloud" defaultOpen>
+    <Folder name="src" defaultOpen>
+      <File name="main.ts" />
+      <File name="provider.ts" />
+      <Folder name="resources">
+        <File name="example.ts" />
+      </Folder>
+    </Folder>
+    <File name="tsconfig.json" />
+    <File name="package.json" />
+  </Folder>
+</Files>
+
+</Step>
+<Step>
+
+### Implement a resource
+
+Every resource is a class implementing the `Resource` interface. The method name becomes the Terraform type: `getName()` returns `"server"` → Terraform type is `"mycloud_server"`.
+
+```typescript title="src/resources/server.ts"
+import { types, Attribute, Schema } from "terrably";
+import type { Resource, CreateContext, ReadContext, UpdateContext, DeleteContext, Provider, State } from "terrably";
+
+export class MyCloudServer implements Resource {
+  constructor(private readonly provider: MyCloudProvider) {}
+
+  getName() { return "server"; }
+
+  getSchema(): Schema {
+    return new Schema([
+      new Attribute("id",         types.string(), { computed: true }),
+      new Attribute("name",       types.string(), { required: true }),
+      new Attribute("region",     types.string(), { required: true, requiresReplace: true }),
+      new Attribute("ip_address", types.string(), { computed: true }),
+    ]);
+  }
+
+  async create(ctx: CreateContext, planned: State): Promise<State> {
+    const resp = await fetch(`${this.provider.apiBase}/servers`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: planned["name"], region: planned["region"] }),
+    });
+    if (!resp.ok) { ctx.diagnostics.addError("create failed", await resp.text()); return planned; }
+    return resp.json();
+  }
+
+  async read(_ctx: ReadContext, current: State): Promise<State | null> {
+    const resp = await fetch(`${this.provider.apiBase}/servers/${current["id"]}`);
+    if (resp.status === 404) return null;
+    return resp.json();
+  }
+
+  async update(ctx: UpdateContext, prior: State, planned: State): Promise<State> {
+    const resp = await fetch(`${this.provider.apiBase}/servers/${prior["id"]}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: planned["name"] }),
+    });
+    if (!resp.ok) { ctx.diagnostics.addError("update failed", await resp.text()); return prior; }
+    return resp.json();
+  }
+
+  async delete(_ctx: DeleteContext, current: State): Promise<void> {
+    await fetch(`${this.provider.apiBase}/servers/${current["id"]}`, { method: "DELETE" });
+  }
+}
+```
+
+</Step>
+<Step>
+
+### Implement the provider
+
+```typescript title="src/provider.ts"
+import { types, Attribute, Schema, Diagnostics } from "terrably";
+import type { Provider, Resource, DataSource, ResourceClass, DataSourceClass, State } from "terrably";
+import { MyCloudServer } from "./resources/server.js";
+
+export class MyCloudProvider implements Provider {
+  apiBase = "https://api.mycloud.example";
+
+  getFullName()    { return "registry.terraform.io/myorg/mycloud"; }
+  getModelPrefix() { return "mycloud"; }
+
+  getProviderSchema(_diags: Diagnostics): Schema {
+    return new Schema([
+      new Attribute("api_url", types.string(), { optional: true }),
+      new Attribute("token",   types.string(), { optional: true, sensitive: true }),
+    ]);
+  }
+
+  validateConfig(_diags: Diagnostics, _config: State): void {}
+
+  configure(_diags: Diagnostics, config: State): void {
+    if (typeof config["api_url"] === "string") this.apiBase = config["api_url"];
+  }
+
+  getResources():   ResourceClass[]   { return [MyCloudServer]; }
+  getDataSources(): DataSourceClass[] { return []; }
+  newResource(cls:   ResourceClass):   Resource   { return new cls(this); }
+  newDataSource(cls: DataSourceClass): DataSource { return new cls(this); }
+}
+```
+
+</Step>
+<Step>
+
+### Wire up the entry point
+
+```typescript title="src/main.ts"
+import { serve } from "terrably";
+import { MyCloudProvider } from "./provider.js";
+
+serve(new MyCloudProvider());
+```
+
+</Step>
+<Step>
+
+### Build and verify
+
+```bash
+pnpm run build
+# → bin/terraform-provider-mycloud  (~130 MB, Node.js runtime embedded)
+```
+
+`terrably build` runs `tsc` → `esbuild` → `node --build-sea` in one step. Verify the binary starts correctly –
+
+```bash
+npx terrably check
+# Runs GetProviderSchema → ValidateProviderConfig → ConfigureProvider
+# and reports any schema mismatches.
+```
+
+</Step>
+<Step>
+
+### Test with dev_overrides
+
+Tell Terraform to use your local binary instead of downloading from the registry –
+
+```hcl title="~/.terraformrc"
+provider_installation {
+  dev_overrides {
+    "myorg/mycloud" = "/absolute/path/to/terraform-provider-mycloud/bin"
+  }
+  direct {}
+}
+```
+
+Write a minimal config and run –
+
+```hcl title="main.tf"
+terraform {
+  required_providers {
+    mycloud = { source = "myorg/mycloud" }
+  }
+}
+
+provider "mycloud" {
+  api_url = "http://127.0.0.1:8765"
+}
+
+resource "mycloud_server" "example" {
+  name   = "hello"
+  region = "us-east-1"
+}
+```
+
+```bash
+terraform plan   # no terraform init needed with dev_overrides
+terraform apply -auto-approve
+```
+
+<Callout type="info">
+No `terraform init` is needed with `dev_overrides`. Terraform skips the registry lookup entirely.
+</Callout>
+
+</Step>
+</Steps>
+
+## Next steps
+
+- [Core concepts](/docs/concepts/schema) — deep dive into types, attributes, and schema
+- [Development workflow](/docs/development/local-testing) — dev mode, debugger, unit tests
+- [Distribution](/docs/distribution) — multi-platform CI and Terraform Registry publishing

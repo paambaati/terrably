@@ -1,0 +1,165 @@
+---
+title: CI release workflow
+description: Multi-platform GitHub Actions matrix that builds a native binary on each platform, then packages and publishes a signed GitHub Release.
+---
+
+## Why a matrix?
+
+Node.js SEA does **not** support cross-compilation — a binary built on macOS will not run on Linux. The solution is a CI matrix that builds natively on each platform, then a single packaging step that assembles all binaries into the release assets the Terraform Registry requires.
+
+```
+CI matrix (one job per platform)
+  └─ terrably build  →  bin/terraform-provider-mycloud_{os}_{arch}
+
+Packaging job
+  └─ terrably publish  →  release/
+       terraform-provider-mycloud_1.0.0_linux_amd64.zip
+       terraform-provider-mycloud_1.0.0_linux_arm64.zip
+       terraform-provider-mycloud_1.0.0_darwin_amd64.zip
+       terraform-provider-mycloud_1.0.0_darwin_arm64.zip
+       terraform-provider-mycloud_1.0.0_windows_amd64.zip
+       terraform-provider-mycloud_1.0.0_manifest.json
+       terraform-provider-mycloud_1.0.0_SHA256SUMS
+       terraform-provider-mycloud_1.0.0_SHA256SUMS.sig
+```
+
+---
+
+## GitHub Actions workflow
+
+Create `.github/workflows/release.yml` in your provider repository. Replace `mycloud` with your provider's short name.
+
+```yaml title=".github/workflows/release.yml"
+name: Release
+
+# Triggers on any tag matching v* (e.g. v1.0.0, v1.2.3-beta)
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # needed to create the GitHub Release
+
+env:
+  PROVIDER_NAME: mycloud   # ← change this
+
+jobs:
+  # ── Build: one job per OS/arch, runs terrably build natively ─────────────
+  build:
+    name: Build (${{ matrix.os }}_${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          # Primary targets (required for HCP Terraform compatibility)
+          - { os: linux,   arch: amd64, runner: ubuntu-latest    }
+          - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm }
+          - { os: darwin,  arch: amd64, runner: macos-13         }
+          - { os: darwin,  arch: arm64, runner: macos-latest     }
+          - { os: windows, arch: amd64, runner: windows-latest   }
+          # Extended targets (optional)
+          - { os: linux,   arch: arm,   runner: ubuntu-24.04-arm }
+          - { os: linux,   arch: "386", runner: ubuntu-latest    }
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '25'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build SEA binary
+        shell: bash
+        run: npx terrably build --name "$PROVIDER_NAME"
+
+      - name: Rename binary with platform suffix
+        shell: bash
+        run: |
+          EXT=""
+          if [ "${{ matrix.os }}" = "windows" ]; then EXT=".exe"; fi
+          mv "bin/terraform-provider-${PROVIDER_NAME}${EXT}" \
+             "bin/terraform-provider-${PROVIDER_NAME}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.os }}-${{ matrix.arch }}
+          path: bin/terraform-provider-${{ env.PROVIDER_NAME }}_${{ matrix.os }}_${{ matrix.arch }}*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── Release: collect all binaries, package, sign, publish ────────────────
+  release:
+    name: Publish to GitHub Releases
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: bin/
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          FP=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+          echo "GPG_FINGERPRINT=${FP}" >> "$GITHUB_ENV"
+
+      - name: Package, sign, and publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx terrably publish \
+            --release-version "${{ github.ref_name }}" \
+            --gpg-key         "${GPG_FINGERPRINT}" \
+            --github-release
+```
+
+---
+
+## Required GitHub Actions secrets
+
+| Secret | How to generate |
+|---|---|
+| `GPG_PRIVATE_KEY` | `gpg --armor --export-secret-keys your@email.com` |
+| *(passphrase)* | GPG key passphrase — omit the import step if the key has no passphrase |
+
+`GITHUB_TOKEN` is injected automatically — no setup required.
+
+<Callout type="info">
+To trigger a release: `git tag v1.0.0 && git push origin v1.0.0`
+</Callout>
+
+---
+
+## Platform support matrix
+
+| Platform | Runner | Priority |
+|---|---|---|
+| Linux x86-64 (`linux_amd64`) | `ubuntu-latest` | **Required** for HCP Terraform |
+| Linux arm64 (`linux_arm64`) | `ubuntu-24.04-arm` | Recommended |
+| Linux armv6 (`linux_arm`) | `ubuntu-24.04-arm` | Recommended |
+| Linux 386 (`linux_386`) | `ubuntu-latest` | Optional |
+| macOS arm64 (`darwin_arm64`) | `macos-latest` | Recommended |
+| macOS x86-64 (`darwin_amd64`) | `macos-13` | Recommended |
+| Windows x86-64 (`windows_amd64`) | `windows-latest` | Recommended |
+
+<Callout type="warn">
+Cross-compilation is not supported. Each platform requires its own native runner in the CI matrix.
+</Callout>

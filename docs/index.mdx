@@ -1,0 +1,35 @@
+---
+title: Introduction
+description: Build Terraform & OpenTofu providers in TypeScript, with full type safety and a zero-Go build pipeline.
+full: true
+---
+
+# terrably
+
+`terrably` lets you write [Terraform](https://developer.hashicorp.com/terraform/plugin) and [OpenTofu](https://opentofu.org) providers in **TypeScript** — full type safety, a familiar ecosystem, and a zero-Go build pipeline.
+
+Providers compile into self-contained [Node.js Single Executable Application](https://nodejs.org/api/single-executable-applications.html) binaries. The Node.js runtime is bundled inside. Operators run `terraform apply` exactly as they would with any Go provider — no Node.js installation required on their machines.
+
+```npm
+# Scaffold, implement, build
+npx terrably new mycloud
+cd terraform-provider-mycloud
+npm install
+npm run build
+# → bin/terraform-provider-mycloud (~130 MB, Node.js runtime embedded)
+```
+
+<Cards>
+  <Card href="/docs/getting-started" title="Getting started" icon={<RocketIcon />}>
+    Scaffold your first provider and run `terraform plan` in 10 minutes.
+  </Card>
+  <Card href="/docs/concepts/schema" title="Core concepts" icon={<BookOpenIcon />}>
+    Types, schema, resource lifecycle, provider-defined functions.
+  </Card>
+  <Card href="/docs/development/local-testing" title="Development" icon={<WrenchIcon />}>
+    dev_overrides, dev mode, unit tests, debugger, and troubleshooting.
+  </Card>
+  <Card href="/docs/distribution" title="Distribution" icon={<UploadIcon />}>
+    Multi-platform CI, GPG signing, and Terraform Registry publishing.
+  </Card>
+</Cards>

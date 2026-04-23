@@ -1,0 +1,11 @@
+{
+  "title": "terrably",
+  "pages": [
+    "index",
+    "getting-started",
+    "concepts",
+    "development",
+    "reference",
+    "distribution"
+  ]
+}

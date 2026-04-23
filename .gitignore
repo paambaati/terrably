@@ -1,9 +1,11 @@
 dist/
 node_modules/
+.DS_Store
 
-# TypeScript source maps and declaration maps
+# TypeScript source maps, declaration maps & incremental build artifacts
 *.js.map
 *.d.ts.map
+tsconfig.tsbuildinfo
 
 # Compiled provider binaries (SEA)
 packages/reference-provider/bin-sea/
@@ -29,5 +31,7 @@ packages/*/dist/sea-config.json
 /tmp/tf-e2e-*/
 /tmp/terraformrc-*/
 
-# macOS metadata
-.DS_Store
+# Fumadocs / Next.js docs site
+packages/docs/.next/
+packages/docs/.source/
+packages/docs/out/

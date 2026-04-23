@@ -1,0 +1,157 @@
+---
+title: Building & publishing
+description: Build a self-contained binary, package release assets, and publish to the Terraform Registry.
+---
+
+## Why distribute as a binary?
+
+Operators who use your provider should not need Node.js installed. A **Node.js Single Executable Application (SEA)** bundles the JS runtime into a single native binary — exactly like a Go provider — so Terraform can launch it with a normal `required_providers` block.
+
+---
+
+## Build a binary
+
+```bash
+terrably build
+# → bin/terraform-provider-mycloud  (~130 MB, Node.js runtime embedded)
+```
+
+`terrably build` runs these steps automatically –
+
+<Steps>
+<Step>
+
+### Compile TypeScript
+
+Runs `tsc` using your project's `tsconfig.json`.
+
+</Step>
+<Step>
+
+### Bundle with esbuild
+
+Produces a single CJS file with all dependencies inlined.
+
+</Step>
+<Step>
+
+### Generate a SEA entry-point
+
+Writes a preamble that extracts embedded `.proto` assets to a temp directory at startup and sets `TF_PROTO_DIR`, then appends the esbuild bundle.
+
+</Step>
+<Step>
+
+### Produce the binary
+
+Runs `node --build-sea` (added in Node.js 25.5.0) to inject the entry-point into a copy of the node binary.
+
+</Step>
+<Step>
+
+### Sign (macOS only)
+
+Runs `codesign --sign -` (ad-hoc signature required for execution on macOS).
+
+</Step>
+</Steps>
+
+### Options
+
+```
+terrably build [options]
+
+  --name <n>   Provider short name (default: inferred from package.json "name")
+  --out <dir>  Output directory (default: bin/)
+```
+
+### Smoke-test the binary
+
+```bash
+TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 \
+  ./bin/terraform-provider-mycloud
+# → prints the go-plugin handshake line and blocks
+```
+
+Or run the full schema validation:
+
+```bash
+terrably check
+```
+
+---
+
+## Package a release with `terrably publish`
+
+`terrably publish` assembles all the release assets the Terraform Registry requires: zips, manifest, SHA256SUMS, and GPG signature.
+
+```
+terrably publish [options]
+
+  --release-version <v>   Version (e.g. 1.2.3 or v1.2.3); default: package.json version
+  --name <n>              Provider short name; default: package.json name
+  --binaries-dir <dir>    Directory with per-platform binaries (default: bin/)
+  --out <dir>             Output directory for release assets (default: release/)
+  --protocol-version <v>  5.0 or 6.0 (default: 6.0)
+  --gpg-key <fp>          GPG key fingerprint/email (default: $GPG_FINGERPRINT)
+  --github-release        Create GitHub Release and upload all assets (requires $GITHUB_TOKEN)
+  --draft                 Create the release as a draft
+  --tag <tag>             Git tag name (default: v{version})
+```
+
+### Required release asset layout
+
+<TypeTable
+  type={{
+    "terraform-provider-{name}_{ver}_{os}_{arch}.zip": {
+      description: "One zip per platform containing the binary.",
+      type: "required",
+    },
+    "terraform-provider-{name}_{ver}_manifest.json": {
+      description: "Protocol version declaration.",
+      type: "required",
+    },
+    "terraform-provider-{name}_{ver}_SHA256SUMS": {
+      description: "SHA-256 of every zip + manifest.",
+      type: "required",
+    },
+    "terraform-provider-{name}_{ver}_SHA256SUMS.sig": {
+      description: "Binary GPG detach-signature of the checksum file.",
+      type: "required",
+    },
+  }}
+/>
+
+The binary **inside** each zip must be named `terraform-provider-{name}_v{ver}` (no OS/arch suffix).
+
+### Binary naming convention
+
+Files in `--binaries-dir` must be named `terraform-provider-{name}_{os}_{arch}[.exe]` –
+
+<Files>
+  <Folder name="bin" defaultOpen>
+    <File name="terraform-provider-mycloud_linux_amd64" />
+    <File name="terraform-provider-mycloud_linux_arm64" />
+    <File name="terraform-provider-mycloud_darwin_amd64" />
+    <File name="terraform-provider-mycloud_darwin_arm64" />
+    <File name="terraform-provider-mycloud_windows_amd64.exe" />
+  </Folder>
+</Files>
+
+If only one binary is present with no platform suffix (the plain output of `terrably build`), it is treated as the current platform — useful for local smoke tests.
+
+### Local packaging example
+
+```bash
+# 1. Build the binary for the current platform
+terrably build
+
+# 2. Rename it with a platform suffix for publish
+mv bin/terraform-provider-mycloud \
+   bin/terraform-provider-mycloud_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/')
+
+# 3. Package, sign, and preview (no GitHub Release)
+GPG_FINGERPRINT=your@email.com terrably publish --release-version 1.0.0
+```
+
+See [CI workflow](/docs/distribution/ci) for the full multi-platform automation.

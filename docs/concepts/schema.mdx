@@ -1,0 +1,234 @@
+---
+title: Types & Schema
+description: The TfType system, Attribute, Block, NestedBlock, and Schema — terrably's building blocks for describing provider resources.
+---
+
+## Types
+
+Every attribute in a schema requires a `TfType`. Types are created via the `types` factory — each call returns a fresh instance.
+
+```typescript
+import { types } from "terrably";
+```
+
+<TypeTable
+  type={{
+    "types.string()": {
+      description: "Terraform `string`. TypeScript: `string`.",
+      type: "TfType<string>",
+    },
+    "types.number()": {
+      description: "Terraform `number`. TypeScript: `number`.",
+      type: "TfType<number>",
+    },
+    "types.bool()": {
+      description: "Terraform `bool`. TypeScript: `boolean`.",
+      type: "TfType<boolean>",
+    },
+    "types.normalizedJson()": {
+      description: "Terraform `string` (JSON round-tripped with sorted keys). TypeScript: `unknown`. Prevents spurious diffs from key reordering.",
+      type: "TfType<unknown>",
+    },
+    "types.list(T)": {
+      description: "Terraform `list(T)`. TypeScript: `T[]`.",
+      type: "TfType<T[]>",
+    },
+    "types.set(T)": {
+      description: "Terraform `set(T)`. TypeScript: `T[]`.",
+      type: "TfType<T[]>",
+    },
+    "types.map(T)": {
+      description: "Terraform `map(T)`. TypeScript: `Record<string, T>`.",
+      type: "TfType<Record<string, T>>",
+    },
+  }}
+/>
+
+**Composing types**
+
+```typescript
+types.list(types.string())          // list of strings
+types.map(types.number())           // map of numbers
+types.set(types.string())           // set of strings
+types.list(types.map(types.bool())) // list of maps of booleans
+```
+
+### Custom `TfType<T>`
+
+Implement this interface to define a custom type –
+
+```typescript
+interface TfType<T = unknown> {
+  encode(value: T | null | UnknownType): unknown;
+  decode(value: unknown): T | null | UnknownType;
+  semanticallyEqual(a: T | null, b: T | null): boolean;
+  tfType(): Uint8Array; // JSON bytes, e.g. Buffer.from('"string"')
+}
+```
+
+---
+
+## Attribute
+
+Describes a single field in a resource or provider schema.
+
+```typescript
+import { Attribute, types } from "terrably";
+
+new Attribute(name: string, type: TfType, options?: AttributeOptions)
+```
+
+### `AttributeOptions`
+
+<TypeTable
+  type={{
+    required: {
+      description: "User must provide this attribute in their config.",
+      type: "boolean",
+      default: "false",
+    },
+    optional: {
+      description: "User may provide this attribute.",
+      type: "boolean",
+      default: "false",
+    },
+    computed: {
+      description: "Provider computes this value. Cannot be set by the user unless also `optional`.",
+      type: "boolean",
+      default: "false",
+    },
+    sensitive: {
+      description: "Value is redacted in plan output and stored encrypted in state. See [sensitive data in state](https://developer.hashicorp.com/terraform/language/state/sensitive-data).",
+      type: "boolean",
+      default: "false",
+    },
+    requiresReplace: {
+      description: "Changing this attribute [destroys and recreates the resource](https://developer.hashicorp.com/terraform/plugin/framework/resources/plan-modification#requiresreplace).",
+      type: "boolean",
+      default: "false",
+    },
+    description: {
+      description: "Shown in `terraform providers schema`.",
+      type: "string",
+      default: '""',
+    },
+    descriptionKind: {
+      description: "Format of the description.",
+      type: '"plain" | "markdown"',
+      default: '"markdown"',
+    },
+    deprecated: {
+      description: "Shows a deprecation warning when the attribute is used.",
+      type: "boolean",
+      default: "false",
+    },
+    deprecationMessage: {
+      description: "Custom deprecation text.",
+      type: "string",
+      default: '""',
+    },
+    default: {
+      description: "Default value used during planning when the attribute is not set.",
+      type: "unknown",
+      default: "undefined",
+    },
+  }}
+/>
+
+**Common patterns**
+
+```typescript
+// Required user input
+new Attribute("name", types.string(), { required: true })
+
+// Server-assigned, read-only
+new Attribute("id", types.string(), { computed: true })
+
+// User may set; provider fills in a default if not set
+new Attribute("size", types.string(), { optional: true, computed: true, default: "small" })
+
+// Sensitive — masked in plan output
+new Attribute("token", types.string(), { required: true, sensitive: true })
+
+// Force-replace when this changes (e.g. region or OS image)
+new Attribute("region", types.string(), { required: true, requiresReplace: true })
+```
+
+<Callout type="info">
+`optional: true, computed: true` together means "user can set it, or the provider will compute a default". This is useful for auto-assigned values like `name` or `region` that the user might want to control.
+</Callout>
+
+---
+
+## NestedBlock
+
+Represents a block that can appear zero or more times (e.g. `network_interface`, `tags`).
+
+```typescript
+import { NestedBlock, Block, Attribute, types } from "terrably";
+
+new NestedBlock(
+  typeName: string,
+  nestingMode: NestMode,
+  block: Block,
+  options?: NestedBlockOptions
+)
+```
+
+| `NestMode` | Terraform equivalent | TypeScript shape |
+|---|---|---|
+| `"single"` | At most one block | `object \| null` |
+| `"list"` | Ordered list of blocks | `object[]` |
+| `"set"` | Unordered set of blocks | `object[]` |
+| `"map"` | Map of blocks keyed by a label | `Record<string, object>` |
+| `"group"` | Exactly one block (implicit) | `object` |
+
+**Example — resource with a `tags` nested block**
+
+```typescript
+import { Schema, Attribute, Block, NestedBlock, types } from "terrably";
+
+new Schema([
+  new Attribute("id",   types.string(), { computed: true }),
+  new Attribute("name", types.string(), { required: true }),
+], [
+  new NestedBlock("tags", "set", new Block([
+    new Attribute("key",   types.string(), { required: true }),
+    new Attribute("value", types.string(), { required: true }),
+  ]), { minItems: 0, maxItems: 10 }),
+])
+```
+
+```hcl
+# Terraform config using the tags block
+resource "mycloud_server" "example" {
+  name = "web-1"
+
+  tags {
+    key   = "env"
+    value = "production"
+  }
+  tags {
+    key   = "team"
+    value = "platform"
+  }
+}
+```
+
+---
+
+## Schema
+
+Top-level schema for a resource, data source, or provider.
+
+```typescript
+import { Schema } from "terrably";
+
+new Schema(
+  attributes: Attribute[] = [],
+  blockTypes: NestedBlock[] = [],
+  version: number = 0
+)
+```
+
+`version` starts at `0`. Increment it whenever the shape of stored state changes (renamed or removed attributes) and implement `Resource.upgrade()` to migrate old state. See [Schema migration](/docs/distribution/schema-migration) for patterns.

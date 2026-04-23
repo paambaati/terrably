@@ -1,8 +1,11 @@
 packages:
   - packages/*
+  - packages/docs
 
 ignoredBuiltDependencies:
   - protobufjs
+  - unrs-resolver
 
 onlyBuiltDependencies:
   - grpc-tools
+  - sharp
