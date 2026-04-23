@@ -171,7 +171,7 @@ npx terrably check
 
 Runs the provider binary through its gRPC lifecycle (GetProviderSchema → ValidateProviderConfig → ConfigureProvider) and reports any mismatches between your schema and Terraform's expectations. Pass `--terraform` to also run `terraform validate`.
 
-### 7. Test locally with dev_overrides
+### 7. Test locally with `dev_overrides`
 
 ```bash
 # Tell Terraform to use your local binary
