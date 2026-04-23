@@ -1,0 +1,105 @@
+name: Documentation
+
+# Builds and deploys the Fumadocs static site to GitHub Pages.
+#
+# Versioning strategy:
+#   • Every push to `main`  → deploys to the root (always "latest").
+#   • Every `v*` tag push   → additionally deploys a frozen copy to /{tag}/.
+#     e.g. https://<owner>.github.io/terrably/v1.0.0/
+#
+# This means old versioned docs are permanently accessible at their path
+# while the root always shows the latest content.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+# Allow only one deployment at a time; cancel in-progress root deploys
+# but do NOT cancel versioned deploys (they write to a different folder).
+concurrency:
+  group: docs-${{ startsWith(github.ref, 'refs/tags/') && github.ref || 'main' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build-and-deploy:
+    name: Build & deploy docs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # JamesIves/github-pages-deploy-action pushes to gh-pages
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # full history so `git describe` can find tags
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter @terrably/docs
+
+      # ── Determine the version label and base paths ──────────────────────────
+      - name: Resolve version and paths
+        id: meta
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="${{ github.ref_name }}"
+            IS_TAG=true
+          else
+            VERSION="v$(node -p "require('./packages/sdk/package.json').version")"
+            IS_TAG=false
+          fi
+          echo "version=${VERSION}"        >> "$GITHUB_OUTPUT"
+          echo "is_tag=${IS_TAG}"          >> "$GITHUB_OUTPUT"
+          echo "root_base=/${REPO_NAME}"   >> "$GITHUB_OUTPUT"
+          echo "ver_base=/${REPO_NAME}/${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # ── Build the "latest" (root) site ──────────────────────────────────────
+      - name: Build docs (root / latest)
+        run: pnpm run build
+        working-directory: packages/docs
+        env:
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.meta.outputs.root_base }}
+          NEXT_PUBLIC_DOCS_VERSION: ${{ steps.meta.outputs.version }}
+
+      - name: Add .nojekyll (root)
+        run: touch packages/docs/out/.nojekyll
+
+      # Deploy to the root of gh-pages.
+      # `clean-exclude: v*/` preserves previously deployed versioned subdirs.
+      - name: Deploy root docs → gh-pages /
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: packages/docs/out
+          clean: true
+          clean-exclude: |
+            v*/
+
+      # ── On tag push: also build + deploy a frozen versioned copy ────────────
+      - name: Build docs (versioned)
+        if: steps.meta.outputs.is_tag == 'true'
+        run: pnpm run build
+        working-directory: packages/docs
+        env:
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.meta.outputs.ver_base }}
+          NEXT_PUBLIC_DOCS_VERSION: ${{ steps.meta.outputs.version }}
+
+      - name: Add .nojekyll (versioned)
+        if: steps.meta.outputs.is_tag == 'true'
+        run: touch packages/docs/out/.nojekyll
+
+      - name: Deploy versioned docs → gh-pages /${{ steps.meta.outputs.version }}
+        if: steps.meta.outputs.is_tag == 'true'
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: packages/docs/out
+          target-folder: ${{ steps.meta.outputs.version }}
+          clean: true

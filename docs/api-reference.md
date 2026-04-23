@@ -1,3 +1,8 @@
+---
+title: API Reference
+description: Complete reference for every public export from terrably — types, schema, resource/provider interfaces, state, diagnostics, and more.
+---
+
 # terrably — API Reference
 
 Complete reference for every public export from `terrably`.

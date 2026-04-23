@@ -1,5 +1,6 @@
 dist/
 node_modules/
+.DS_Store
 
 # TypeScript source maps and declaration maps
 *.js.map
@@ -29,5 +30,7 @@ packages/*/dist/sea-config.json
 /tmp/tf-e2e-*/
 /tmp/terraformrc-*/
 
-# macOS metadata
-.DS_Store
+# Fumadocs / Next.js docs site
+packages/docs/.next/
+packages/docs/.source/
+packages/docs/out/

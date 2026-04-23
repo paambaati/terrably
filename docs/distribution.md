@@ -1,3 +1,8 @@
+---
+title: Distribution
+description: Build, package, sign, and publish a terrably-based provider to the Terraform Registry — including multi-platform CI, GPG signing, and schema migration.
+---
+
 # Distributing your provider
 
 This guide explains how to build, package, sign, and publish a terrably-based
@@ -17,6 +22,7 @@ provider to the Terraform Registry so operators can install it with a normal
 7. [Platform support matrix](#platform-support-matrix)
 8. [Versioning](#versioning)
 9. [Schema changes and state migration](#publishing-a-new-version)
+10. [Generating provider documentation](#generating-provider-documentation)
 
 ---
 
@@ -552,3 +558,77 @@ read(ctx: ReadContext, current: State): State {
     disk_type: live.diskType ?? current["disk_type"] ?? "ssd",
   };
 }
+```
+
+---
+
+## Generating provider documentation
+
+The [Terraform Registry](https://registry.terraform.io/) displays documentation sourced directly
+from a `docs/` directory in your GitHub repository. `tfplugindocs` is HashiCorp's official
+tool for generating that directory automatically from your provider's live schema.
+
+Despite being a Go tool, it works with **any** provider language — it launches your
+pre-built binary via `terraform providers schema -json` and renders the output into
+Markdown. No Go knowledge is required beyond installing the binary.
+
+### Prerequisites
+
+- The provider binary must already be built (`terrably build`).
+- `tfplugindocs` installed: download a pre-built binary from the
+  [releases page](https://github.com/hashicorp/terraform-plugin-docs/releases)
+  (no Go required), or install via Go:
+  ```bash
+  go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest
+  ```
+- `terraform` CLI available on your `PATH`.
+
+### How it works
+
+For non-Go providers you pass `--providers-schema` to skip compilation. The schema
+JSON comes from running `terraform providers schema -json` inside your `tf-workspace/`
+(which uses `dev_overrides` to launch your local binary):
+
+```bash
+# 1. Build the provider binary
+pnpm run build
+
+# 2. Export the provider schema via Terraform
+#    (uses tf-workspace/.terraformrc dev_overrides to launch your binary)
+cd tf-workspace
+TF_CLI_CONFIG_FILE=.terraformrc terraform providers schema -json > ../providers-schema.json
+cd ..
+
+# 3. Generate the docs/  directory
+tfplugindocs generate \
+  --providers-schema ./providers-schema.json \
+  --provider-name <shortname>
+
+# 4. Clean up the intermediate schema file
+rm providers-schema.json
+```
+
+`tfplugindocs` writes into `docs/` with the layout the registry expects:
+
+```
+docs/
+  index.md               ← provider overview (required)
+  resources/
+    <resource>.md         ← one file per resource
+  data-sources/
+    <datasource>.md       ← one file per data source
+```
+
+Commit the `docs/` folder and include it in the release — the registry reads it
+directly from the tag.
+
+### Customising the output
+
+Create a `templates/` directory in your provider repo to override the default
+templates. See the
+[tfplugindocs template guide](https://github.com/hashicorp/terraform-plugin-docs#templates)
+for available variables (`.SchemaMarkdown`, `.ExampleFile`, etc.) and layout options.
+
+Tip: add `examples/provider/provider.tf` and
+`examples/resources/<name>/resource.tf` files to your repo — `tfplugindocs`
+includes them as Terraform code blocks automatically.

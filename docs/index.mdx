@@ -1,0 +1,33 @@
+---
+title: Introduction
+description: TypeScript-native Terraform/OpenTofu provider authoring framework.
+full: true
+---
+
+# terrably
+
+`terrably` lets you write [Terraform providers](https://developer.hashicorp.com/terraform/plugin) in **TypeScript**, with full type safety and a zero-Go build pipeline.
+
+Providers are compiled into self-contained [Node.js Single Executable Application (SEA)](https://nodejs.org/api/single-executable-applications.html) binaries — no Node.js installation required on the machines running Terraform.
+
+## Quick start
+
+```bash
+# Install the CLI
+npm install -g terrably
+
+# Scaffold a new provider project
+terrably new
+
+# Build and test locally
+npm run build:binary
+cd tf-workspace && terraform plan
+```
+
+## What's in these docs
+
+| Guide | What you'll learn |
+|---|---|
+| [Local Testing](/docs/local-testing) | dev_overrides, dev mode, unit tests, E2E |
+| [API Reference](/docs/api-reference) | Every public export — types, schema, interfaces, state |
+| [Distribution](/docs/distribution) | Multi-platform CI, GPG signing, Terraform Registry |

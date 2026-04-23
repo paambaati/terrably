@@ -1,3 +1,8 @@
+---
+title: Local Testing
+description: Run plan/apply against your code locally, debug gRPC calls, write unit tests, and run the full E2E suite.
+---
+
 # Local testing guide
 
 This guide covers every workflow you'll use while iterating on a Terraform provider built with `terrably` – running plan/apply against your code, debugging gRPC calls, writing unit tests for resource logic, and running the full E2E suite.
