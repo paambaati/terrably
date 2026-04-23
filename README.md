@@ -31,7 +31,7 @@ terrably publish                       Package, sign, and upload a release
 
 | Tool | Version |
 |---|---|
-| Node.js | ≥ 22 |
+| Node.js | ≥ 25.5.0 |
 | Terraform CLI | ≥ 1.0 (`brew install terraform`) |
 
 ### 1. Scaffold a new project

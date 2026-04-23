@@ -7,7 +7,7 @@
  * required on the machine that runs `terraform apply`.
  *
  * Requirements:
- *   Node.js >= 22  (for stable --build-sea support)
+ *   Node.js >= 25.5.0  (--build-sea was added in v25.5.0)
  *
  * Usage (from packages/reference-provider/):
  *   node scripts/build-sea.mjs [--name dummycloud] [--out bin-sea/]
@@ -55,9 +55,11 @@ const binaryPath   = path.join(outDir, binaryName);
 // Preflight checks
 // ---------------------------------------------------------------------------
 
-const nodeMajor = parseInt(process.versions.node.split(".")[0], 10);
-if (nodeMajor < 22) {
-  console.error(`✗ Node.js >= 22 required for --build-sea (found ${process.version})`);
+const [nodeMajorStr = "0", nodeMinorStr = "0"] = process.versions.node.split(".");
+const nodeMajor = parseInt(nodeMajorStr, 10);
+const nodeMinor = parseInt(nodeMinorStr, 10);
+if (nodeMajor < 25 || (nodeMajor === 25 && nodeMinor < 5)) {
+  console.error(`✗ Node.js >= 25.5.0 required for --build-sea (found ${process.version})`);
   process.exit(1);
 }
 

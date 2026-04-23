@@ -33,9 +33,22 @@ export async function buildCommand(options: { name?: string; out?: string }): Pr
   const binaryPath = path.join(outDir, binaryName);
 
   // ── Node.js version check ─────────────────────────────────────────────────
-  const nodeMajor = parseInt(process.versions.node.split(".")[0]!, 10);
-  if (nodeMajor < 22) {
-    process.stderr.write(`✗ Node.js >= 22 required for --build-sea (found ${process.version})\n`);
+  // --build-sea was added in Node.js 25.5.0 (https://nodejs.org/api/cli.html#build-seaconfig).
+  // The older workflow (--experimental-sea-config + postject) works on older
+  // versions but terrably uses --build-sea for simplicity.
+  const [nodeMajorStr = "0", nodeMinorStr = "0", nodePatchStr = "0"] = process.versions.node.split(".");
+  const nodeMajor = parseInt(nodeMajorStr, 10);
+  const nodeMinor = parseInt(nodeMinorStr, 10);
+  const nodePatch = parseInt(nodePatchStr, 10);
+  const nodeVersion = nodeMajor * 10000 + nodeMinor * 100 + nodePatch;
+  const minVersion  = 25 * 10000 + 5 * 100 + 0;
+  if (nodeVersion < minVersion) {
+    process.stderr.write(
+      `✗ Node.js ≥ 25.5.0 is required to build a Single Executable Application.\n` +
+      `  The --build-sea flag was added in Node.js 25.5.0.\n` +
+      `  You are running ${process.version}.\n` +
+      `  Install Node.js 25.5.0+: https://nodejs.org/en/download\n`,
+    );
     process.exit(1);
   }
 
