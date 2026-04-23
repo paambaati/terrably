@@ -1,0 +1,9 @@
+1:"$Sreact.fragment"
+2:I[92944,["/terrably/_next/static/chunks/0e__ujv__uucr.js","/terrably/_next/static/chunks/0bxmyxyayvsp3.js"],"ClientPageRoot"]
+3:I[17781,["/terrably/_next/static/chunks/0e__ujv__uucr.js","/terrably/_next/static/chunks/0bxmyxyayvsp3.js","/terrably/_next/static/chunks/0rj8uvyz4vmtk.js"],"default"]
+6:I[43117,["/terrably/_next/static/chunks/0e__ujv__uucr.js","/terrably/_next/static/chunks/0bxmyxyayvsp3.js"],"OutletBoundary"]
+7:"$Sreact.suspense"
+0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"Component":"$3","serverProvidedParams":{"searchParams":{},"params":{},"promises":["$@4","$@5"]}}],[["$","script","script-0",{"src":"/terrably/_next/static/chunks/0rj8uvyz4vmtk.js","async":true}]],["$","$L6",null,{"children":["$","$7",null,{"name":"Next.MetadataOutlet","children":"$@8"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"sS8A50aqO_A-f06kQe929"}
+4:{}
+5:"$0:rsc:props:children:0:props:serverProvidedParams:params"
+8:null

@@ -1,0 +1,2510 @@
+# Getting started (/docs/getting-started)
+
+
+
+## Prerequisites [#prerequisites]
+
+| Tool          | Version  | Notes                                                |
+| ------------- | -------- | ---------------------------------------------------- |
+| Node.js       | ≥ 25.5.0 | Required for `--build-sea` (single executable build) |
+| Terraform CLI | ≥ 1.0    | For local plan/apply                                 |
+
+<Steps>
+  <Step>
+    ### Scaffold a new project [#scaffold-a-new-project]
+
+    <CodeBlockTabs defaultValue="npm">
+      <CodeBlockTabsList>
+        <CodeBlockTabsTrigger value="npm">
+          npm
+        </CodeBlockTabsTrigger>
+
+        <CodeBlockTabsTrigger value="pnpm">
+          pnpm
+        </CodeBlockTabsTrigger>
+
+        <CodeBlockTabsTrigger value="yarn">
+          yarn
+        </CodeBlockTabsTrigger>
+      </CodeBlockTabsList>
+
+      <CodeBlockTab value="npm">
+        ```bash
+        npx terrably new mycloud
+        cd terraform-provider-mycloud
+        npm install
+        ```
+      </CodeBlockTab>
+
+      <CodeBlockTab value="pnpm">
+        ```bash
+        pnpm dlx terrably new mycloud
+        cd terraform-provider-mycloud
+        pnpm install
+        ```
+      </CodeBlockTab>
+
+      <CodeBlockTab value="yarn">
+        ```bash
+        yarn dlx terrably new mycloud
+        cd terraform-provider-mycloud
+        yarn install
+        ```
+      </CodeBlockTab>
+    </CodeBlockTabs>
+
+    The scaffold creates a fully-wired starter project –
+
+    <Files>
+      <Folder name="terraform-provider-mycloud">
+        <Folder name="src">
+          <File name="main.ts" />
+
+          <File name="provider.ts" />
+
+          <Folder name="resources">
+            <File name="example.ts" />
+          </Folder>
+        </Folder>
+
+        <File name="tsconfig.json" />
+
+        <File name="package.json" />
+      </Folder>
+    </Files>
+  </Step>
+
+  <Step>
+    ### Implement a resource [#implement-a-resource]
+
+    Every resource is a class implementing the `Resource` interface. The method name becomes the Terraform type: `getName()` returns `"server"` → Terraform type is `"mycloud_server"`.
+
+    ```typescript title="src/resources/server.ts"
+    import { types, Attribute, Schema } from "terrably";
+    import type { Resource, CreateContext, ReadContext, UpdateContext, DeleteContext, Provider, State } from "terrably";
+
+    export class MyCloudServer implements Resource {
+      constructor(private readonly provider: MyCloudProvider) {}
+
+      getName() { return "server"; }
+
+      getSchema(): Schema {
+        return new Schema([
+          new Attribute("id",         types.string(), { computed: true }),
+          new Attribute("name",       types.string(), { required: true }),
+          new Attribute("region",     types.string(), { required: true, requiresReplace: true }),
+          new Attribute("ip_address", types.string(), { computed: true }),
+        ]);
+      }
+
+      async create(ctx: CreateContext, planned: State): Promise<State> {
+        const resp = await fetch(`${this.provider.apiBase}/servers`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: planned["name"], region: planned["region"] }),
+        });
+        if (!resp.ok) { ctx.diagnostics.addError("create failed", await resp.text()); return planned; }
+        return resp.json();
+      }
+
+      async read(_ctx: ReadContext, current: State): Promise<State | null> {
+        const resp = await fetch(`${this.provider.apiBase}/servers/${current["id"]}`);
+        if (resp.status === 404) return null;
+        return resp.json();
+      }
+
+      async update(ctx: UpdateContext, prior: State, planned: State): Promise<State> {
+        const resp = await fetch(`${this.provider.apiBase}/servers/${prior["id"]}`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: planned["name"] }),
+        });
+        if (!resp.ok) { ctx.diagnostics.addError("update failed", await resp.text()); return prior; }
+        return resp.json();
+      }
+
+      async delete(_ctx: DeleteContext, current: State): Promise<void> {
+        await fetch(`${this.provider.apiBase}/servers/${current["id"]}`, { method: "DELETE" });
+      }
+    }
+    ```
+  </Step>
+
+  <Step>
+    ### Implement the provider [#implement-the-provider]
+
+    ```typescript title="src/provider.ts"
+    import { types, Attribute, Schema, Diagnostics } from "terrably";
+    import type { Provider, Resource, DataSource, ResourceClass, DataSourceClass, State } from "terrably";
+    import { MyCloudServer } from "./resources/server.js";
+
+    export class MyCloudProvider implements Provider {
+      apiBase = "https://api.mycloud.example";
+
+      getFullName()    { return "registry.terraform.io/myorg/mycloud"; }
+      getModelPrefix() { return "mycloud"; }
+
+      getProviderSchema(_diags: Diagnostics): Schema {
+        return new Schema([
+          new Attribute("api_url", types.string(), { optional: true }),
+          new Attribute("token",   types.string(), { optional: true, sensitive: true }),
+        ]);
+      }
+
+      validateConfig(_diags: Diagnostics, _config: State): void {}
+
+      configure(_diags: Diagnostics, config: State): void {
+        if (typeof config["api_url"] === "string") this.apiBase = config["api_url"];
+      }
+
+      getResources():   ResourceClass[]   { return [MyCloudServer]; }
+      getDataSources(): DataSourceClass[] { return []; }
+      newResource(cls:   ResourceClass):   Resource   { return new cls(this); }
+      newDataSource(cls: DataSourceClass): DataSource { return new cls(this); }
+    }
+    ```
+  </Step>
+
+  <Step>
+    ### Wire up the entry point [#wire-up-the-entry-point]
+
+    ```typescript title="src/main.ts"
+    import { serve } from "terrably";
+    import { MyCloudProvider } from "./provider.js";
+
+    serve(new MyCloudProvider());
+    ```
+  </Step>
+
+  <Step>
+    ### Build and verify [#build-and-verify]
+
+    ```bash
+    pnpm run build
+    # → bin/terraform-provider-mycloud  (~130 MB, Node.js runtime embedded)
+    ```
+
+    `terrably build` runs `tsc` → `esbuild` → `node --build-sea` in one step. Verify the binary starts correctly –
+
+    ```bash
+    npx terrably check
+    # Runs GetProviderSchema → ValidateProviderConfig → ConfigureProvider
+    # and reports any schema mismatches.
+    ```
+  </Step>
+
+  <Step>
+    ### Test with dev\_overrides [#test-with-dev_overrides]
+
+    Tell Terraform to use your local binary instead of downloading from the registry –
+
+    ```hcl title="~/.terraformrc"
+    provider_installation {
+      dev_overrides {
+        "myorg/mycloud" = "/absolute/path/to/terraform-provider-mycloud/bin"
+      }
+      direct {}
+    }
+    ```
+
+    Write a minimal config and run –
+
+    ```hcl title="main.tf"
+    terraform {
+      required_providers {
+        mycloud = { source = "myorg/mycloud" }
+      }
+    }
+
+    provider "mycloud" {
+      api_url = "http://127.0.0.1:8765"
+    }
+
+    resource "mycloud_server" "example" {
+      name   = "hello"
+      region = "us-east-1"
+    }
+    ```
+
+    ```bash
+    terraform plan   # no terraform init needed with dev_overrides
+    terraform apply -auto-approve
+    ```
+
+    <Callout type="info">
+      No `terraform init` is needed with `dev_overrides`. Terraform skips the registry lookup entirely.
+    </Callout>
+  </Step>
+</Steps>
+
+## Next steps [#next-steps]
+
+* [Core concepts](/docs/concepts/schema) — deep dive into types, attributes, and schema
+* [Development workflow](/docs/development/local-testing) — dev mode, debugger, unit tests
+* [Distribution](/docs/distribution) — multi-platform CI and Terraform Registry publishing
+
+
+# Introduction (/docs)
+
+
+
+# terrably [#terrably]
+
+`terrably` lets you write [Terraform](https://developer.hashicorp.com/terraform/plugin) and [OpenTofu](https://opentofu.org) providers in **TypeScript** — full type safety, a familiar ecosystem, and a zero-Go build pipeline.
+
+Providers compile into self-contained [Node.js Single Executable Application](https://nodejs.org/api/single-executable-applications.html) binaries. The Node.js runtime is bundled inside. Operators run `terraform apply` exactly as they would with any Go provider — no Node.js installation required on their machines.
+
+<CodeBlockTabs defaultValue="npm">
+  <CodeBlockTabsList>
+    <CodeBlockTabsTrigger value="npm">
+      npm
+    </CodeBlockTabsTrigger>
+
+    <CodeBlockTabsTrigger value="pnpm">
+      pnpm
+    </CodeBlockTabsTrigger>
+
+    <CodeBlockTabsTrigger value="yarn">
+      yarn
+    </CodeBlockTabsTrigger>
+  </CodeBlockTabsList>
+
+  <CodeBlockTab value="npm">
+    ```bash
+    # Scaffold, implement, build
+    npx terrably new mycloud
+    cd terraform-provider-mycloud
+    npm install
+    npm run build
+    # → bin/terraform-provider-mycloud (~130 MB, Node.js runtime embedded)
+    ```
+  </CodeBlockTab>
+
+  <CodeBlockTab value="pnpm">
+    ```bash
+    # Scaffold, implement, build
+    pnpm dlx terrably new mycloud
+    cd terraform-provider-mycloud
+    pnpm install
+    pnpm run build
+    # → bin/terraform-provider-mycloud (~130 MB, Node.js runtime embedded)
+    ```
+  </CodeBlockTab>
+
+  <CodeBlockTab value="yarn">
+    ```bash
+    # Scaffold, implement, build
+    yarn dlx terrably new mycloud
+    cd terraform-provider-mycloud
+    yarn install
+    yarn build
+    # → bin/terraform-provider-mycloud (~130 MB, Node.js runtime embedded)
+    ```
+  </CodeBlockTab>
+</CodeBlockTabs>
+
+<Cards>
+  <Card href="/docs/getting-started" title="Getting started" icon="<RocketIcon />">
+    Scaffold your first provider and run `terraform plan` in 10 minutes.
+  </Card>
+
+  <Card href="/docs/concepts/schema" title="Core concepts" icon="<BookOpenIcon />">
+    Types, schema, resource lifecycle, provider-defined functions.
+  </Card>
+
+  <Card href="/docs/development/local-testing" title="Development" icon="<WrenchIcon />">
+    dev\_overrides, dev mode, unit tests, debugger, and troubleshooting.
+  </Card>
+
+  <Card href="/docs/distribution" title="Distribution" icon="<UploadIcon />">
+    Multi-platform CI, GPG signing, and Terraform Registry publishing.
+  </Card>
+</Cards>
+
+
+# Provider-defined functions (/docs/concepts/functions)
+
+
+
+[Terraform ≥ 1.8](https://developer.hashicorp.com/terraform/plugin/framework/functions/concepts) lets providers expose **pure functions** callable directly from HCL configuration –
+
+```hcl
+output "upper" {
+  value = provider::mycloud::uppercase("hello")
+  # → "HELLO"
+}
+```
+
+Functions are stateless and have no side effects. They run during plan, not apply.
+
+## Implementing a function [#implementing-a-function]
+
+```typescript title="src/functions/uppercase.ts"
+import type { TerrablyFunction, FunctionSignature, FunctionCallContext, Provider } from "terrably";
+import { types } from "terrably";
+
+export class UppercaseFunction implements TerrablyFunction {
+  constructor(_provider: Provider) {}
+
+  getName(): string { return "uppercase"; }
+
+  getSignature(): FunctionSignature {
+    return {
+      parameters: [
+        { name: "input", type: types.string(), description: "The string to convert." },
+      ],
+      returnType: { type: types.string() },
+      summary: "Convert a string to uppercase",
+    };
+  }
+
+  call(_ctx: FunctionCallContext, args: unknown[]): unknown {
+    return String(args[0]).toUpperCase();
+  }
+}
+```
+
+## Registering functions [#registering-functions]
+
+Add `getFunctions()` to your `Provider` implementation –
+
+```typescript title="src/provider.ts"
+import { UppercaseFunction } from "./functions/uppercase.js";
+
+export class MyCloudProvider implements Provider {
+  // ...existing methods...
+
+  getFunctions(): FunctionClass[] {
+    return [UppercaseFunction];
+  }
+}
+```
+
+## `FunctionSignature` [#functionsignature]
+
+<TypeTable
+  type="{
+  parameters: {
+    description: &#x22;Ordered list of named positional parameters.&#x22;,
+    type: &#x22;FunctionParameter[]&#x22;,
+  },
+  returnType: {
+    description: &#x22;The return type of the function.&#x22;,
+    type: &#x22;FunctionReturn&#x22;,
+  },
+  variadicParameter: {
+    description: &#x22;Optional. Accepts zero or more additional arguments of this type appended after positional ones.&#x22;,
+    type: &#x22;FunctionParameter&#x22;,
+  },
+  summary: {
+    description: &#x22;Short description shown in `terraform providers schema`.&#x22;,
+    type: &#x22;string&#x22;,
+  },
+  description: {
+    description: &#x22;Longer description.&#x22;,
+    type: &#x22;string&#x22;,
+  },
+  descriptionKind: {
+    description: &#x22;Format of description.&#x22;,
+    type: '&#x22;plain&#x22; | &#x22;markdown&#x22;',
+    default: '&#x22;markdown&#x22;',
+  },
+  deprecationMessage: {
+    description: &#x22;Set to deprecate the function.&#x22;,
+    type: &#x22;string&#x22;,
+  },
+}"
+/>
+
+## `FunctionParameter` [#functionparameter]
+
+<TypeTable
+  type="{
+  name: { description: &#x22;Parameter name.&#x22;, type: &#x22;string&#x22; },
+  type: { description: &#x22;Any `TfType` — same types used in schema attributes.&#x22;, type: &#x22;TfType&#x22; },
+  description: { description: &#x22;Parameter description.&#x22;, type: &#x22;string&#x22; },
+  allowNullValue: {
+    description: &#x22;If false (default), Terraform errors when the caller passes null.&#x22;,
+    type: &#x22;boolean&#x22;,
+    default: &#x22;false&#x22;,
+  },
+  allowUnknownValues: {
+    description: &#x22;If false (default), Terraform skips the call when any arg is unknown.&#x22;,
+    type: &#x22;boolean&#x22;,
+    default: &#x22;false&#x22;,
+  },
+}"
+/>
+
+## Variadic functions [#variadic-functions]
+
+Declare a `variadicParameter` to accept a variable number of trailing arguments –
+
+```typescript
+export class ConcatFunction implements TerrablyFunction {
+  getName() { return "concat"; }
+
+  getSignature(): FunctionSignature {
+    return {
+      parameters: [
+        { name: "separator", type: types.string() },
+      ],
+      variadicParameter: { name: "values", type: types.string() },
+      returnType: { type: types.string() },
+      summary: "Join strings with a separator",
+    };
+  }
+
+  call(_ctx: FunctionCallContext, args: unknown[]): unknown {
+    const [separator, ...values] = args as string[];
+    return values.join(separator);
+  }
+}
+```
+
+```hcl
+output "joined" {
+  value = provider::mycloud::concat(", ", "apple", "banana", "cherry")
+  # → "apple, banana, cherry"
+}
+```
+
+## Error handling [#error-handling]
+
+<Tabs groupId="fn-error" items="[&#x22;Via diagnostics&#x22;, &#x22;Via exception&#x22;]">
+  <Tab value="Via diagnostics">
+    Report errors via `ctx.diagnostics`. Terraform aborts plan/apply and displays the error alongside the output:
+
+    ```typescript
+    call(ctx: FunctionCallContext, args: unknown[]): unknown {
+      const n = args[0] as number;
+      if (n < 0) {
+        ctx.diagnostics.addError(
+          "Invalid argument",
+          `Expected a non-negative number, got ${n}.`,
+        );
+        return 0; // return a safe default; Terraform discards it on error
+      }
+      return Math.sqrt(n);
+    }
+    ```
+  </Tab>
+
+  <Tab value="Via exception">
+    Throwing a JavaScript exception also surfaces as a `FunctionError` to Terraform:
+
+    ```typescript
+    call(_ctx: FunctionCallContext, args: unknown[]): unknown {
+      const n = args[0] as number;
+      if (n < 0) throw new Error(`Expected non-negative, got ${n}`);
+      return Math.sqrt(n);
+    }
+    ```
+
+    Prefer `ctx.diagnostics` for user-facing validation errors — they produce cleaner Terraform output.
+  </Tab>
+</Tabs>
+
+
+# Provider (/docs/concepts/provider)
+
+
+
+## The `Provider` interface [#the-provider-interface]
+
+```typescript
+interface Provider {
+  // Terraform registry identifier, e.g. "registry.terraform.io/myorg/mycloud"
+  getFullName(): string;
+
+  // Prefix for all resource/datasource type names, e.g. "mycloud"
+  // Resource named "server" → Terraform type "mycloud_server"
+  getModelPrefix(): string;
+
+  // Return the schema for the provider-level configuration block
+  getProviderSchema(diags: Diagnostics): Schema;
+
+  // Optional: validate provider config before configure() is called
+  validateConfig(diags: Diagnostics, config: State): void;
+
+  // Called once with the resolved provider config; store credentials here
+  configure(diags: Diagnostics, config: State): void | Promise<void>;
+
+  // Return the list of resource classes this provider manages
+  getResources(): ResourceClass[];
+
+  // Return the list of data source classes
+  getDataSources(): DataSourceClass[];
+
+  // Optional: return provider-defined functions
+  getFunctions?(): FunctionClass[];
+
+  // Factory methods — typically just `new cls(this)`
+  newResource(cls: ResourceClass): Resource;
+  newDataSource(cls: DataSourceClass): DataSource;
+}
+```
+
+### Full example [#full-example]
+
+```typescript title="src/provider.ts"
+import { types, Attribute, Schema, Diagnostics, createLogger } from "terrably";
+import type {
+  Provider, Resource, DataSource,
+  ResourceClass, DataSourceClass, State,
+} from "terrably";
+import { MyCloudServer } from "./resources/server.js";
+import { RegionsDataSource } from "./data-sources/regions.js";
+
+const log = createLogger("provider");
+
+export class MyCloudProvider implements Provider {
+  apiBase = "https://api.mycloud.example";
+  private token = "";
+
+  getFullName()    { return "registry.terraform.io/myorg/mycloud"; }
+  getModelPrefix() { return "mycloud"; }
+
+  getProviderSchema(_diags: Diagnostics): Schema {
+    return new Schema([
+      new Attribute("api_url", types.string(), {
+        optional: true,
+        description: "Base URL for the MyCloud API. Defaults to `https://api.mycloud.example`.",
+      }),
+      new Attribute("token", types.string(), {
+        optional: true,
+        sensitive: true,
+        description: "API token. May also be set via the `MYCLOUD_TOKEN` environment variable.",
+      }),
+    ]);
+  }
+
+  validateConfig(diags: Diagnostics, config: State): void {
+    const token = (config["token"] as string | null) ?? process.env["MYCLOUD_TOKEN"];
+    if (!token) {
+      diags.addError(
+        "Missing authentication token",
+        'Set the `token` attribute or the `MYCLOUD_TOKEN` environment variable.',
+        ["token"],
+      );
+    }
+  }
+
+  configure(_diags: Diagnostics, config: State): void {
+    if (typeof config["api_url"] === "string") this.apiBase = config["api_url"];
+    this.token = (config["token"] as string | null) ?? process.env["MYCLOUD_TOKEN"] ?? "";
+    log.info("provider configured", { endpoint: this.apiBase });
+  }
+
+  getResources():   ResourceClass[]   { return [MyCloudServer]; }
+  getDataSources(): DataSourceClass[] { return [RegionsDataSource]; }
+  newResource(cls:   ResourceClass):   Resource   { return new cls(this); }
+  newDataSource(cls: DataSourceClass): DataSource { return new cls(this); }
+}
+```
+
+## Type naming [#type-naming]
+
+The Terraform type for a resource is `{getModelPrefix()}_{resource.getName()}` –
+
+| `getModelPrefix()` | `getName()`               | Terraform type         |
+| ------------------ | ------------------------- | ---------------------- |
+| `"mycloud"`        | `"server"`                | `mycloud_server`       |
+| `"mycloud"`        | `"database"`              | `mycloud_database`     |
+| `"mycloud"`        | `"regions"` (data source) | `data.mycloud_regions` |
+
+<Callout type="warn">
+  `getModelPrefix()` must return the prefix **without** a trailing underscore. terrably adds it automatically.
+</Callout>
+
+## `configure()` lifecycle [#configure-lifecycle]
+
+Terraform calls `configure()` once per run, after validating the provider block. This is the right place to:
+
+* Store API credentials and base URL on the provider instance
+* Initialise an HTTP client
+* Set up any shared state resources will use
+
+Resources receive a reference to the provider via their constructor (`new cls(this)`), so any fields stored in `configure()` are accessible to all resources.
+
+## `validateConfig()` vs provider-level error handling [#validateconfig-vs-provider-level-error-handling]
+
+`validateConfig()` runs **before** `configure()` and receives the raw config. Return early-validation errors here. If `validateConfig()` adds an error, `configure()` is not called.
+
+```typescript
+validateConfig(diags: Diagnostics, config: State): void {
+  const token = config["token"] as string | null;
+  if (!token && !process.env["MYCLOUD_TOKEN"]) {
+    diags.addError(
+      "Missing required token",
+      'Set `token` in the provider block or export MYCLOUD_TOKEN.',
+      ["token"],
+    );
+  }
+}
+```
+
+
+# Resources & Data Sources (/docs/concepts/resources)
+
+
+
+## `Resource` interface [#resource-interface]
+
+```typescript
+interface Resource {
+  getName(): string;       // Short type name, e.g. "server" → "mycloud_server"
+  getSchema(): Schema;
+
+  // Required lifecycle methods (all may be async)
+  create(ctx: CreateContext, planned: State): State | Promise<State>;
+  read(ctx: ReadContext, current: State): State | null | Promise<State | null>;
+  update(ctx: UpdateContext, prior: State, planned: State): State | Promise<State>;
+  delete(ctx: DeleteContext, current: State): void | Promise<void>;
+
+  // Optional hooks
+  validate?(diags: Diagnostics, typeName: string, config: State): void;
+  plan?(ctx: PlanContext, prior: State | null, planned: State): State | Promise<State>;
+  import?(ctx: ImportContext, id: string): State | null | Promise<State | null>;
+  upgrade?(ctx: UpgradeContext, version: number, old: State): State | Promise<State>;
+}
+
+type ResourceClass = new (provider: Provider) => Resource;
+```
+
+## Lifecycle methods [#lifecycle-methods]
+
+### `create(ctx, planned)` [#createctx-planned]
+
+Called during `terraform apply` when creating a new resource.
+
+* `planned` — the user's config with computed fields set to `Unknown`
+* Return the **full new state** including all computed fields (e.g. `id`, `ip_address`)
+* Add errors to `ctx.diagnostics` to abort the create; Terraform marks the resource as tainted
+
+```typescript
+async create(ctx: CreateContext, planned: State): Promise<State> {
+  const resp = await fetch(`${this.provider.apiBase}/servers`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: planned["name"], region: planned["region"] }),
+  });
+  if (!resp.ok) {
+    ctx.diagnostics.addError("API error", await resp.text());
+    return planned; // return something; Terraform taints the resource on error
+  }
+  return resp.json(); // must include all computed fields
+}
+```
+
+### `read(ctx, current)` [#readctx-current]
+
+Called during `terraform refresh` and before plan/apply to detect drift.
+
+* Return `null` if the resource no longer exists → Terraform plans a re-create
+* Return updated state to reflect any drift
+
+```typescript
+async read(_ctx: ReadContext, current: State): Promise<State | null> {
+  const resp = await fetch(`${this.provider.apiBase}/servers/${current["id"]}`);
+  if (resp.status === 404) return null; // triggers re-create on next apply
+  if (!resp.ok) return current; // return current state on transient errors
+  return resp.json();
+}
+```
+
+### `update(ctx, prior, planned)` [#updatectx-prior-planned]
+
+Called during `terraform apply` for in-place updates. `prior` is the current state; `planned` is what the user wants. Return the resulting state.
+
+```typescript
+async update(ctx: UpdateContext, prior: State, planned: State): Promise<State> {
+  // ctx.changedFields is a Set<string> of attribute names that changed
+  const resp = await fetch(`${this.provider.apiBase}/servers/${prior["id"]}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: planned["name"] }),
+  });
+  if (!resp.ok) { ctx.diagnostics.addError("update failed", await resp.text()); return prior; }
+  return resp.json();
+}
+```
+
+### `delete(ctx, current)` [#deletectx-current]
+
+Called during `terraform destroy`. No return value.
+
+```typescript
+async delete(_ctx: DeleteContext, current: State): Promise<void> {
+  const resp = await fetch(`${this.provider.apiBase}/servers/${current["id"]}`, { method: "DELETE" });
+  if (!resp.ok && resp.status !== 404) {
+    // 404 is fine — resource already gone
+    _ctx.diagnostics.addError("delete failed", await resp.text());
+  }
+}
+```
+
+## Optional hooks [#optional-hooks]
+
+### `validate(diags, typeName, config)` [#validatediags-typename-config]
+
+Custom validation during `terraform validate` / `terraform plan`. Called before `create` or `update`. Use this for cross-attribute validation that the schema can't express (e.g. "if `region` is `us-east-1` then `zone` must be set").
+
+```typescript
+validate(diags: Diagnostics, _typeName: string, config: State): void {
+  if (config["region"] === "us-east-1" && !config["zone"]) {
+    diags.addError(
+      "zone required for us-east-1",
+      "The us-east-1 region requires an explicit availability zone.",
+      ["zone"],
+    );
+  }
+}
+```
+
+### `plan(ctx, prior, planned)` [#planctx-prior-planned]
+
+Override the default plan behaviour. Useful for marking attributes as `Unknown` ([known after apply](https://developer.hashicorp.com/terraform/plugin/framework/handling-data/terraform-concepts#unknown-values)) before you know what the API will return.
+
+```typescript
+plan(_ctx: PlanContext, _prior: State | null, planned: State): State {
+  return {
+    ...planned,
+    // ip_address is not known until the server is created
+    ip_address: Unknown,
+    // id is always computed on create
+    id: planned["id"] ?? Unknown,
+  };
+}
+```
+
+### `import(ctx, id)` [#importctx-id]
+
+Support [`terraform import`](https://developer.hashicorp.com/terraform/cli/import). Parse the `id` string and return the current state from the API, or `null` if the resource doesn't exist.
+
+```typescript
+async import(_ctx: ImportContext, id: string): Promise<State | null> {
+  const resp = await fetch(`${this.provider.apiBase}/servers/${id}`);
+  if (resp.status === 404) return null;
+  return resp.json();
+}
+```
+
+After importing, Terraform records the returned state and generates a plan to reconcile any differences with the config.
+
+### `upgrade(ctx, version, old)` [#upgradectx-version-old]
+
+Migrate state when the schema `version` changes. See [Schema migration](/docs/distribution/schema-migration) for full patterns.
+
+## Context objects [#context-objects]
+
+Every lifecycle method receives a context as its first argument.
+
+```typescript
+interface BaseContext {
+  readonly diagnostics: Diagnostics;
+  readonly typeName: string;       // e.g. "mycloud_server"
+}
+
+// create, read, delete, import, upgrade — extend BaseContext with no extra fields
+
+interface UpdateContext extends BaseContext {
+  readonly changedFields: Set<string>; // attribute names that differ between prior and planned
+}
+
+interface PlanContext extends BaseContext {
+  readonly changedFields: Set<string>;
+}
+```
+
+***
+
+## `DataSource` interface [#datasource-interface]
+
+Data sources are read-only. They have no create/update/delete — only `read`.
+
+```typescript
+interface DataSource {
+  getName(): string;       // e.g. "regions" → data.mycloud_regions
+  getSchema(): Schema;
+
+  validate?(diags: Diagnostics, typeName: string, config: State): void;
+
+  // Called during terraform plan. Return the fetched data or null.
+  read(ctx: ReadDataContext, config: State): State | null | Promise<State | null>;
+}
+
+type DataSourceClass = new (provider: Provider) => DataSource;
+```
+
+**Example:**
+
+```typescript title="src/data-sources/regions.ts"
+import { types, Attribute, Schema } from "terrably";
+import type { DataSource, ReadDataContext, Provider, State } from "terrably";
+
+export class RegionsDataSource implements DataSource {
+  constructor(private readonly provider: MyCloudProvider) {}
+
+  getName() { return "regions"; }
+
+  getSchema(): Schema {
+    return new Schema([
+      new Attribute("filter", types.string(), { optional: true }),
+      new Attribute("names",  types.list(types.string()), { computed: true }),
+    ]);
+  }
+
+  async read(_ctx: ReadDataContext, config: State): Promise<State> {
+    const resp = await fetch(`${this.provider.apiBase}/regions`);
+    const regions = (await resp.json()) as string[];
+    const filter = config["filter"] as string | null;
+    return {
+      filter: config["filter"],
+      names: filter ? regions.filter(r => r.includes(filter)) : regions,
+    };
+  }
+}
+```
+
+```hcl
+data "mycloud_regions" "filtered" {
+  filter = "us-"
+}
+
+output "regions" {
+  value = data.mycloud_regions.filtered.names
+}
+```
+
+
+# Types & Schema (/docs/concepts/schema)
+
+
+
+## Types [#types]
+
+Every attribute in a schema requires a `TfType`. Types are created via the `types` factory — each call returns a fresh instance.
+
+```typescript
+import { types } from "terrably";
+```
+
+<TypeTable
+  type="{
+  &#x22;types.string()&#x22;: {
+    description: &#x22;Terraform `string`. TypeScript: `string`.&#x22;,
+    type: &#x22;TfType<string>&#x22;,
+  },
+  &#x22;types.number()&#x22;: {
+    description: &#x22;Terraform `number`. TypeScript: `number`.&#x22;,
+    type: &#x22;TfType<number>&#x22;,
+  },
+  &#x22;types.bool()&#x22;: {
+    description: &#x22;Terraform `bool`. TypeScript: `boolean`.&#x22;,
+    type: &#x22;TfType<boolean>&#x22;,
+  },
+  &#x22;types.normalizedJson()&#x22;: {
+    description: &#x22;Terraform `string` (JSON round-tripped with sorted keys). TypeScript: `unknown`. Prevents spurious diffs from key reordering.&#x22;,
+    type: &#x22;TfType<unknown>&#x22;,
+  },
+  &#x22;types.list(T)&#x22;: {
+    description: &#x22;Terraform `list(T)`. TypeScript: `T[]`.&#x22;,
+    type: &#x22;TfType<T[]>&#x22;,
+  },
+  &#x22;types.set(T)&#x22;: {
+    description: &#x22;Terraform `set(T)`. TypeScript: `T[]`.&#x22;,
+    type: &#x22;TfType<T[]>&#x22;,
+  },
+  &#x22;types.map(T)&#x22;: {
+    description: &#x22;Terraform `map(T)`. TypeScript: `Record<string, T>`.&#x22;,
+    type: &#x22;TfType<Record<string, T>>&#x22;,
+  },
+}"
+/>
+
+**Composing types**
+
+```typescript
+types.list(types.string())          // list of strings
+types.map(types.number())           // map of numbers
+types.set(types.string())           // set of strings
+types.list(types.map(types.bool())) // list of maps of booleans
+```
+
+### Custom `TfType<T>` [#custom-tftypet]
+
+Implement this interface to define a custom type –
+
+```typescript
+interface TfType<T = unknown> {
+  encode(value: T | null | UnknownType): unknown;
+  decode(value: unknown): T | null | UnknownType;
+  semanticallyEqual(a: T | null, b: T | null): boolean;
+  tfType(): Uint8Array; // JSON bytes, e.g. Buffer.from('"string"')
+}
+```
+
+***
+
+## Attribute [#attribute]
+
+Describes a single field in a resource or provider schema.
+
+```typescript
+import { Attribute, types } from "terrably";
+
+new Attribute(name: string, type: TfType, options?: AttributeOptions)
+```
+
+### `AttributeOptions` [#attributeoptions]
+
+<TypeTable
+  type="{
+  required: {
+    description: &#x22;User must provide this attribute in their config.&#x22;,
+    type: &#x22;boolean&#x22;,
+    default: &#x22;false&#x22;,
+  },
+  optional: {
+    description: &#x22;User may provide this attribute.&#x22;,
+    type: &#x22;boolean&#x22;,
+    default: &#x22;false&#x22;,
+  },
+  computed: {
+    description: &#x22;Provider computes this value. Cannot be set by the user unless also `optional`.&#x22;,
+    type: &#x22;boolean&#x22;,
+    default: &#x22;false&#x22;,
+  },
+  sensitive: {
+    description: &#x22;Value is redacted in plan output and stored encrypted in state. See [sensitive data in state](https://developer.hashicorp.com/terraform/language/state/sensitive-data).&#x22;,
+    type: &#x22;boolean&#x22;,
+    default: &#x22;false&#x22;,
+  },
+  requiresReplace: {
+    description: &#x22;Changing this attribute [destroys and recreates the resource](https://developer.hashicorp.com/terraform/plugin/framework/resources/plan-modification#requiresreplace).&#x22;,
+    type: &#x22;boolean&#x22;,
+    default: &#x22;false&#x22;,
+  },
+  description: {
+    description: &#x22;Shown in `terraform providers schema`.&#x22;,
+    type: &#x22;string&#x22;,
+    default: '&#x22;&#x22;',
+  },
+  descriptionKind: {
+    description: &#x22;Format of the description.&#x22;,
+    type: '&#x22;plain&#x22; | &#x22;markdown&#x22;',
+    default: '&#x22;markdown&#x22;',
+  },
+  deprecated: {
+    description: &#x22;Shows a deprecation warning when the attribute is used.&#x22;,
+    type: &#x22;boolean&#x22;,
+    default: &#x22;false&#x22;,
+  },
+  deprecationMessage: {
+    description: &#x22;Custom deprecation text.&#x22;,
+    type: &#x22;string&#x22;,
+    default: '&#x22;&#x22;',
+  },
+  default: {
+    description: &#x22;Default value used during planning when the attribute is not set.&#x22;,
+    type: &#x22;unknown&#x22;,
+    default: &#x22;undefined&#x22;,
+  },
+}"
+/>
+
+**Common patterns**
+
+```typescript
+// Required user input
+new Attribute("name", types.string(), { required: true })
+
+// Server-assigned, read-only
+new Attribute("id", types.string(), { computed: true })
+
+// User may set; provider fills in a default if not set
+new Attribute("size", types.string(), { optional: true, computed: true, default: "small" })
+
+// Sensitive — masked in plan output
+new Attribute("token", types.string(), { required: true, sensitive: true })
+
+// Force-replace when this changes (e.g. region or OS image)
+new Attribute("region", types.string(), { required: true, requiresReplace: true })
+```
+
+<Callout type="info">
+  `optional: true, computed: true` together means "user can set it, or the provider will compute a default". This is useful for auto-assigned values like `name` or `region` that the user might want to control.
+</Callout>
+
+***
+
+## NestedBlock [#nestedblock]
+
+Represents a block that can appear zero or more times (e.g. `network_interface`, `tags`).
+
+```typescript
+import { NestedBlock, Block, Attribute, types } from "terrably";
+
+new NestedBlock(
+  typeName: string,
+  nestingMode: NestMode,
+  block: Block,
+  options?: NestedBlockOptions
+)
+```
+
+| `NestMode` | Terraform equivalent           | TypeScript shape         |
+| ---------- | ------------------------------ | ------------------------ |
+| `"single"` | At most one block              | `object \| null`         |
+| `"list"`   | Ordered list of blocks         | `object[]`               |
+| `"set"`    | Unordered set of blocks        | `object[]`               |
+| `"map"`    | Map of blocks keyed by a label | `Record<string, object>` |
+| `"group"`  | Exactly one block (implicit)   | `object`                 |
+
+**Example — resource with a `tags` nested block**
+
+```typescript
+import { Schema, Attribute, Block, NestedBlock, types } from "terrably";
+
+new Schema([
+  new Attribute("id",   types.string(), { computed: true }),
+  new Attribute("name", types.string(), { required: true }),
+], [
+  new NestedBlock("tags", "set", new Block([
+    new Attribute("key",   types.string(), { required: true }),
+    new Attribute("value", types.string(), { required: true }),
+  ]), { minItems: 0, maxItems: 10 }),
+])
+```
+
+```hcl
+# Terraform config using the tags block
+resource "mycloud_server" "example" {
+  name = "web-1"
+
+  tags {
+    key   = "env"
+    value = "production"
+  }
+  tags {
+    key   = "team"
+    value = "platform"
+  }
+}
+```
+
+***
+
+## Schema [#schema]
+
+Top-level schema for a resource, data source, or provider.
+
+```typescript
+import { Schema } from "terrably";
+
+new Schema(
+  attributes: Attribute[] = [],
+  blockTypes: NestedBlock[] = [],
+  version: number = 0
+)
+```
+
+`version` starts at `0`. Increment it whenever the shape of stored state changes (renamed or removed attributes) and implement `Resource.upgrade()` to migrate old state. See [Schema migration](/docs/distribution/schema-migration) for patterns.
+
+
+# Debugging & troubleshooting (/docs/development/debugging)
+
+
+
+## Attaching a Node.js debugger [#attaching-a-nodejs-debugger]
+
+Start the provider with `--inspect-brk` to pause execution until a debugger connects –
+
+```bash
+TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 \
+TF_PLUGIN_DEBUG=1 \
+  node --inspect-brk dist/src/main.js
+```
+
+Then attach:
+
+<Tabs groupId="debugger" items="[&#x22;VS Code&#x22;, &#x22;Chrome DevTools&#x22;]">
+  <Tab value="VS Code">
+    Add a launch config –
+
+    ```json title=".vscode/launch.json"
+    {
+      "version": "0.2.0",
+      "configurations": [
+        {
+          "name": "Attach to Provider",
+          "type": "node",
+          "request": "attach",
+          "port": 9229,
+          "skipFiles": ["<node_internals>/**"]
+        }
+      ]
+    }
+    ```
+
+    Hit **F5** → "Attach to Provider". The process resumes and pauses at your breakpoints.
+  </Tab>
+
+  <Tab value="Chrome DevTools">
+    Open `chrome://inspect` → **Open dedicated DevTools for Node** → the provider appears under "Remote Target".
+  </Tab>
+</Tabs>
+
+***
+
+## Reading provider logs [#reading-provider-logs]
+
+terrably emits structured JSON logs to `stderr` in the [go-hclog](https://github.com/hashicorp/go-hclog) format that Terraform parses and re-emits. See the [Terraform debugging docs](https://developer.hashicorp.com/terraform/internals/debugging) for the full list of `TF_LOG` levels and options.
+
+```bash
+# All levels — Terraform core + provider
+TF_LOG=DEBUG terraform apply
+
+# Provider-only logs (suppresses Terraform core noise)
+TF_LOG_PROVIDER=DEBUG terraform apply
+
+# Write to a file
+TF_LOG=DEBUG TF_LOG_PATH=./tf.log terraform apply
+```
+
+Filter provider logs from a mixed stream:
+
+```bash
+TF_LOG=TRACE terraform apply 2>&1 | grep '"@module":"provider'
+```
+
+See [Structured logging](/docs/reference/logging) for how to emit logs from your own code.
+
+***
+
+## Common issues [#common-issues]
+
+### "This binary is a Terraform provider plugin" [#this-binary-is-a-terraform-provider-plugin]
+
+The magic cookie is missing. Set it before running the provider manually:
+
+```bash
+export TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2
+```
+
+Terraform sets this automatically when it spawns the provider. You only need it when starting the provider manually in dev mode.
+
+### "The provider does not support resource type X" [#the-provider-does-not-support-resource-type-x]
+
+The Terraform type is `{getModelPrefix()}_{resource.getName()}`. Verify –
+
+* `getModelPrefix()` returns `"mycloud"` (no trailing underscore)
+* `getName()` returns `"server"` (no prefix, no underscores)
+* Combined: `"mycloud_server"` matches exactly what you wrote in `main.tf`
+
+### proto files not found at runtime [#proto-files-not-found-at-runtime]
+
+The SDK loads `tfplugin6.proto` at runtime from the `proto/` directory. If you have a custom build pipeline and copied `dist/` without `proto/`, they need to travel together — `proto/` must be two levels above `dist/src/serve.js`.
+
+With `terrably build` (the standard path) this is handled automatically — the proto files are embedded as SEA assets.
+
+### "transport: Error while dialing" [#transport-error-while-dialing]
+
+The Unix socket path changed between runs. This happens when you restart the provider in dev mode without updating `TF_REATTACH_PROVIDERS`. Copy the new export command from the provider's stdout each time.
+
+### Terraform state becomes inconsistent after a schema change [#terraform-state-becomes-inconsistent-after-a-schema-change]
+
+If you rename or remove attributes without implementing `upgrade()`, Terraform may fail to read old state. Options:
+
+* Increment `version` in your `Schema` constructor and implement `Resource.upgrade()` — see [Schema migration](/docs/distribution/schema-migration) for patterns.
+* Run `terraform state rm <resource>` to drop the old state and re-create the resource.
+
+
+# Local testing (/docs/development/local-testing)
+
+
+
+## Mode 1 — `dev_overrides` (recommended) [#mode-1--dev_overrides-recommended]
+
+The simplest workflow. Terraform uses your local binary directly instead of downloading from the registry; no `terraform init` required. Read the official [Terraform documentation on dev\_overrides](https://developer.hashicorp.com/terraform/cli/config/config-file#development-overrides-for-provider-developers) to learn more.
+
+<Steps>
+  <Step>
+    ### Build the provider binary [#build-the-provider-binary]
+
+    ```bash
+    pnpm run build
+    # → bin/terraform-provider-mycloud
+    ```
+
+    Rebuild after any TypeScript change. `terrably build` runs tsc + esbuild + `node --build-sea` in one step.
+  </Step>
+
+  <Step>
+    ### Configure dev\_overrides [#configure-dev_overrides]
+
+    Point Terraform at the directory containing your binary:
+
+    <Tabs groupId="tfrc" items="[&#x22;Local file (recommended)&#x22;, &#x22;Global ~/.terraformrc&#x22;]">
+      <Tab value="Local file (recommended)">
+        ```hcl title="tf-workspace/.terraformrc"
+        provider_installation {
+          dev_overrides {
+            "myorg/mycloud" = "/absolute/path/to/your-provider/bin"
+          }
+          direct {}
+        }
+        ```
+
+        Then export the path:
+
+        ```bash
+        export TF_CLI_CONFIG_FILE="$PWD/tf-workspace/.terraformrc"
+        ```
+
+        Keeps your global Terraform config clean.
+      </Tab>
+
+      <Tab value="Global ~/.terraformrc">
+        ```hcl title="~/.terraformrc"
+        provider_installation {
+          dev_overrides {
+            "myorg/mycloud" = "/absolute/path/to/your-provider/bin"
+          }
+          direct {}
+        }
+        ```
+
+        Affects all Terraform workspaces on your machine.
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step>
+    ### Write a Terraform config [#write-a-terraform-config]
+
+    ```hcl title="tf-workspace/main.tf"
+    terraform {
+      required_providers {
+        mycloud = { source = "myorg/mycloud" }
+      }
+    }
+
+    provider "mycloud" {
+      api_url = "http://127.0.0.1:8765"
+    }
+
+    resource "mycloud_server" "example" {
+      name   = "hello"
+      region = "us-east-1"
+    }
+    ```
+  </Step>
+
+  <Step>
+    ### Run Terraform [#run-terraform]
+
+    ```bash
+    cd tf-workspace
+    terraform plan
+    terraform apply -auto-approve
+    terraform destroy -auto-approve
+    ```
+
+    <Callout type="info">
+      No `terraform init` needed with `dev_overrides`. Terraform skips the registry lookup and spawns the binary directly.
+    </Callout>
+  </Step>
+</Steps>
+
+### Fast iteration loop [#fast-iteration-loop]
+
+```bash
+# Edit TypeScript → recompile → plan (no restart needed)
+pnpm exec tsc && terraform plan
+```
+
+Each `terraform plan` spawns a fresh process, so there is no server to restart.
+
+***
+
+## Mode 2 — dev mode [#mode-2--dev-mode]
+
+Use this when you need to attach a debugger, print detailed logs, or inspect the exact gRPC messages Terraform sends.
+
+The provider starts manually and stays alive. Terraform reconnects to it on each command.
+
+<Steps>
+  <Step>
+    ### Enable dev mode in your entry point [#enable-dev-mode-in-your-entry-point]
+
+    ```typescript title="src/main.ts"
+    import { serve } from "terrably";
+    import { MyProvider } from "./provider.js";
+
+    const dev = process.argv.includes("--dev") || process.env["TF_PLUGIN_DEBUG"] === "1";
+    serve(new MyProvider(), { dev }).catch(console.error);
+    ```
+  </Step>
+
+  <Step>
+    ### Build and start the provider [#build-and-start-the-provider]
+
+    ```bash
+    pnpm exec tsc
+
+    TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 \
+    TF_PLUGIN_DEBUG=1 node dist/src/main.js
+    ```
+
+    The provider prints:
+
+    ```
+    Dev mode — set this environment variable –
+
+        export TF_REATTACH_PROVIDERS='{"registry.terraform.io/myorg/mycloud":{"Protocol":"grpc","ProtocolVersion":6,"Pid":12345,"Test":true,"Addr":{"Network":"unix","String":"/tmp/tf-js-provider-12345-...sock"}}}'
+    ```
+  </Step>
+
+  <Step>
+    ### Copy the export and run Terraform [#copy-the-export-and-run-terraform]
+
+    In a **separate** shell –
+
+    ```bash
+    export TF_REATTACH_PROVIDERS='...paste from above...'
+    terraform plan
+    ```
+
+    Terraform connects to the running process. Run as many `plan`/`apply` cycles as you like without restarting. Kill the provider with `Ctrl-C` when done.
+
+    <Callout type="warn">
+      Copy a fresh `TF_REATTACH_PROVIDERS` value every time you restart the provider. The Unix socket path changes on each run.
+    </Callout>
+  </Step>
+</Steps>
+
+
+# Testing (/docs/development/testing)
+
+
+
+## Unit testing [#unit-testing]
+
+Resource lifecycle methods (`create`, `read`, `update`, `delete`) are plain async functions. Test them directly — no gRPC server needed.
+
+```typescript title="tests/server.test.ts"
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { MyCloudServer } from "../src/resources/server.js";
+import { Diagnostics } from "terrably";
+import type { CreateContext, ReadContext } from "terrably";
+
+// Minimal mock provider
+const mockProvider = { apiBase: "https://api.mycloud.example" } as any;
+
+test("create returns state with id", async () => {
+  const resource = new MyCloudServer(mockProvider);
+  const ctx: CreateContext = {
+    diagnostics: new Diagnostics(),
+    typeName: "mycloud_server",
+  };
+
+  const result = await resource.create(ctx, { name: "test", region: "us-east-1" });
+
+  assert.ok(result["id"], "should have an id");
+  assert.equal(result["name"], "test");
+  assert.ok(!ctx.diagnostics.hasErrors());
+});
+
+test("read returns null for 404", async () => {
+  const resource = new MyCloudServer(mockProvider);
+  const ctx: ReadContext = {
+    diagnostics: new Diagnostics(),
+    typeName: "mycloud_server",
+  };
+
+  const result = await resource.read(ctx, { id: "nonexistent-id" });
+
+  assert.strictEqual(result, null);
+});
+```
+
+### Running tests [#running-tests]
+
+```bash
+# Build first so TypeScript compiles
+pnpm exec tsc
+
+node --test dist/tests/*.test.js
+```
+
+Or via the package script –
+
+```bash
+pnpm run test
+```
+
+### Testing with a real local API [#testing-with-a-real-local-api]
+
+Start your API server before running tests –
+
+```bash
+node dist/api-server/index.js &
+API_PID=$!
+
+node --test dist/tests/server.test.js
+
+kill $API_PID
+```
+
+***
+
+## End-to-end tests [#end-to-end-tests]
+
+The E2E tests use the built-in `node:test` runner. Two suites run against a real Terraform binary –
+
+| Suite                       | Provider mode                                                                                                                                 | Binary            |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `provider: dev mode`        | `tsx` + [`TF_REATTACH_PROVIDERS`](https://developer.hashicorp.com/terraform/plugin/debugging#running-terraform-with-a-provider-in-debug-mode) | TypeScript source |
+| `provider: Node SEA binary` | standalone binary                                                                                                                             | `bin/`            |
+
+<Callout type="warn">
+  The SEA suite requires the provider binary to be built first (`pnpm run build`). It also requires `terraform` to be on your `PATH`.
+</Callout>
+
+### Prerequisites [#prerequisites]
+
+<Steps>
+  <Step>
+    ### Build the reference provider [#build-the-reference-provider]
+
+    ```bash
+    # From the monorepo root
+    cd packages/sdk && pnpm exec tsc
+    cd packages/reference-provider && pnpm exec tsc && pnpm run build:binary
+    ```
+  </Step>
+
+  <Step>
+    ### Confirm Terraform is available [#confirm-terraform-is-available]
+
+    ```bash
+    terraform version
+    ```
+  </Step>
+</Steps>
+
+### Run the end-to-end tests [#run-the-end-to-end-tests]
+
+```bash
+pnpm run test
+```
+
+
+# CI release workflow (/docs/distribution/ci)
+
+
+
+## Why a matrix? [#why-a-matrix]
+
+Node.js SEA does **not** support cross-compilation — a binary built on macOS will not run on Linux. The solution is a CI matrix that builds natively on each platform, then a single packaging step that assembles all binaries into the release assets the Terraform Registry requires.
+
+```
+CI matrix (one job per platform)
+  └─ terrably build  →  bin/terraform-provider-mycloud_{os}_{arch}
+
+Packaging job
+  └─ terrably publish  →  release/
+       terraform-provider-mycloud_1.0.0_linux_amd64.zip
+       terraform-provider-mycloud_1.0.0_linux_arm64.zip
+       terraform-provider-mycloud_1.0.0_darwin_amd64.zip
+       terraform-provider-mycloud_1.0.0_darwin_arm64.zip
+       terraform-provider-mycloud_1.0.0_windows_amd64.zip
+       terraform-provider-mycloud_1.0.0_manifest.json
+       terraform-provider-mycloud_1.0.0_SHA256SUMS
+       terraform-provider-mycloud_1.0.0_SHA256SUMS.sig
+```
+
+***
+
+## GitHub Actions workflow [#github-actions-workflow]
+
+Create `.github/workflows/release.yml` in your provider repository. Replace `mycloud` with your provider's short name.
+
+```yaml title=".github/workflows/release.yml"
+name: Release
+
+# Triggers on any tag matching v* (e.g. v1.0.0, v1.2.3-beta)
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # needed to create the GitHub Release
+
+env:
+  PROVIDER_NAME: mycloud   # ← change this
+
+jobs:
+  # ── Build: one job per OS/arch, runs terrably build natively ─────────────
+  build:
+    name: Build (${{ matrix.os }}_${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          # Primary targets (required for HCP Terraform compatibility)
+          - { os: linux,   arch: amd64, runner: ubuntu-latest    }
+          - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm }
+          - { os: darwin,  arch: amd64, runner: macos-13         }
+          - { os: darwin,  arch: arm64, runner: macos-latest     }
+          - { os: windows, arch: amd64, runner: windows-latest   }
+          # Extended targets (optional)
+          - { os: linux,   arch: arm,   runner: ubuntu-24.04-arm }
+          - { os: linux,   arch: "386", runner: ubuntu-latest    }
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '25'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build SEA binary
+        shell: bash
+        run: npx terrably build --name "$PROVIDER_NAME"
+
+      - name: Rename binary with platform suffix
+        shell: bash
+        run: |
+          EXT=""
+          if [ "${{ matrix.os }}" = "windows" ]; then EXT=".exe"; fi
+          mv "bin/terraform-provider-${PROVIDER_NAME}${EXT}" \
+             "bin/terraform-provider-${PROVIDER_NAME}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.os }}-${{ matrix.arch }}
+          path: bin/terraform-provider-${{ env.PROVIDER_NAME }}_${{ matrix.os }}_${{ matrix.arch }}*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── Release: collect all binaries, package, sign, publish ────────────────
+  release:
+    name: Publish to GitHub Releases
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: bin/
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          FP=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+          echo "GPG_FINGERPRINT=${FP}" >> "$GITHUB_ENV"
+
+      - name: Package, sign, and publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx terrably publish \
+            --release-version "${{ github.ref_name }}" \
+            --gpg-key         "${GPG_FINGERPRINT}" \
+            --github-release
+```
+
+***
+
+## Required GitHub Actions secrets [#required-github-actions-secrets]
+
+| Secret            | How to generate                                                        |
+| ----------------- | ---------------------------------------------------------------------- |
+| `GPG_PRIVATE_KEY` | `gpg --armor --export-secret-keys your@email.com`                      |
+| *(passphrase)*    | GPG key passphrase — omit the import step if the key has no passphrase |
+
+`GITHUB_TOKEN` is injected automatically — no setup required.
+
+<Callout type="info">
+  To trigger a release: `git tag v1.0.0 && git push origin v1.0.0`
+</Callout>
+
+***
+
+## Platform support matrix [#platform-support-matrix]
+
+| Platform                         | Runner             | Priority                       |
+| -------------------------------- | ------------------ | ------------------------------ |
+| Linux x86-64 (`linux_amd64`)     | `ubuntu-latest`    | **Required** for HCP Terraform |
+| Linux arm64 (`linux_arm64`)      | `ubuntu-24.04-arm` | Recommended                    |
+| Linux armv6 (`linux_arm`)        | `ubuntu-24.04-arm` | Recommended                    |
+| Linux 386 (`linux_386`)          | `ubuntu-latest`    | Optional                       |
+| macOS arm64 (`darwin_arm64`)     | `macos-latest`     | Recommended                    |
+| macOS x86-64 (`darwin_amd64`)    | `macos-13`         | Recommended                    |
+| Windows x86-64 (`windows_amd64`) | `windows-latest`   | Recommended                    |
+
+<Callout type="warn">
+  Cross-compilation is not supported. Each platform requires its own native runner in the CI matrix.
+</Callout>
+
+
+# Building & publishing (/docs/distribution)
+
+
+
+## Why distribute as a binary? [#why-distribute-as-a-binary]
+
+Operators who use your provider should not need Node.js installed. A &#x2A;*Node.js Single Executable Application (SEA)** bundles the JS runtime into a single native binary — exactly like a Go provider — so Terraform can launch it with a normal `required_providers` block.
+
+***
+
+## Build a binary [#build-a-binary]
+
+```bash
+terrably build
+# → bin/terraform-provider-mycloud  (~130 MB, Node.js runtime embedded)
+```
+
+`terrably build` runs these steps automatically –
+
+<Steps>
+  <Step>
+    ### Compile TypeScript [#compile-typescript]
+
+    Runs `tsc` using your project's `tsconfig.json`.
+  </Step>
+
+  <Step>
+    ### Bundle with esbuild [#bundle-with-esbuild]
+
+    Produces a single CJS file with all dependencies inlined.
+  </Step>
+
+  <Step>
+    ### Generate a SEA entry-point [#generate-a-sea-entry-point]
+
+    Writes a preamble that extracts embedded `.proto` assets to a temp directory at startup and sets `TF_PROTO_DIR`, then appends the esbuild bundle.
+  </Step>
+
+  <Step>
+    ### Produce the binary [#produce-the-binary]
+
+    Runs `node --build-sea` (added in Node.js 25.5.0) to inject the entry-point into a copy of the node binary.
+  </Step>
+
+  <Step>
+    ### Sign (macOS only) [#sign-macos-only]
+
+    Runs `codesign --sign -` (ad-hoc signature required for execution on macOS).
+  </Step>
+</Steps>
+
+### Options [#options]
+
+```
+terrably build [options]
+
+  --name <n>   Provider short name (default: inferred from package.json "name")
+  --out <dir>  Output directory (default: bin/)
+```
+
+### Smoke-test the binary [#smoke-test-the-binary]
+
+```bash
+TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 \
+  ./bin/terraform-provider-mycloud
+# → prints the go-plugin handshake line and blocks
+```
+
+Or run the full schema validation:
+
+```bash
+terrably check
+```
+
+***
+
+## Package a release with `terrably publish` [#package-a-release-with-terrably-publish]
+
+`terrably publish` assembles all the release assets the Terraform Registry requires: zips, manifest, SHA256SUMS, and GPG signature.
+
+```
+terrably publish [options]
+
+  --release-version <v>   Version (e.g. 1.2.3 or v1.2.3); default: package.json version
+  --name <n>              Provider short name; default: package.json name
+  --binaries-dir <dir>    Directory with per-platform binaries (default: bin/)
+  --out <dir>             Output directory for release assets (default: release/)
+  --protocol-version <v>  5.0 or 6.0 (default: 6.0)
+  --gpg-key <fp>          GPG key fingerprint/email (default: $GPG_FINGERPRINT)
+  --github-release        Create GitHub Release and upload all assets (requires $GITHUB_TOKEN)
+  --draft                 Create the release as a draft
+  --tag <tag>             Git tag name (default: v{version})
+```
+
+### Required release asset layout [#required-release-asset-layout]
+
+<TypeTable
+  type="{
+  &#x22;terraform-provider-{name}_{ver}_{os}_{arch}.zip&#x22;: {
+    description: &#x22;One zip per platform containing the binary.&#x22;,
+    type: &#x22;required&#x22;,
+  },
+  &#x22;terraform-provider-{name}_{ver}_manifest.json&#x22;: {
+    description: &#x22;Protocol version declaration.&#x22;,
+    type: &#x22;required&#x22;,
+  },
+  &#x22;terraform-provider-{name}_{ver}_SHA256SUMS&#x22;: {
+    description: &#x22;SHA-256 of every zip + manifest.&#x22;,
+    type: &#x22;required&#x22;,
+  },
+  &#x22;terraform-provider-{name}_{ver}_SHA256SUMS.sig&#x22;: {
+    description: &#x22;Binary GPG detach-signature of the checksum file.&#x22;,
+    type: &#x22;required&#x22;,
+  },
+}"
+/>
+
+The binary **inside** each zip must be named `terraform-provider-{name}_v{ver}` (no OS/arch suffix).
+
+### Binary naming convention [#binary-naming-convention]
+
+Files in `--binaries-dir` must be named `terraform-provider-{name}_{os}_{arch}[.exe]` –
+
+<Files>
+  <Folder name="bin">
+    <File name="terraform-provider-mycloud_linux_amd64" />
+
+    <File name="terraform-provider-mycloud_linux_arm64" />
+
+    <File name="terraform-provider-mycloud_darwin_amd64" />
+
+    <File name="terraform-provider-mycloud_darwin_arm64" />
+
+    <File name="terraform-provider-mycloud_windows_amd64.exe" />
+  </Folder>
+</Files>
+
+If only one binary is present with no platform suffix (the plain output of `terrably build`), it is treated as the current platform — useful for local smoke tests.
+
+### Local packaging example [#local-packaging-example]
+
+```bash
+# 1. Build the binary for the current platform
+terrably build
+
+# 2. Rename it with a platform suffix for publish
+mv bin/terraform-provider-mycloud \
+   bin/terraform-provider-mycloud_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/')
+
+# 3. Package, sign, and preview (no GitHub Release)
+GPG_FINGERPRINT=your@email.com terrably publish --release-version 1.0.0
+```
+
+See [CI workflow](/docs/distribution/ci) for the full multi-platform automation.
+
+
+# Terraform Registry (/docs/distribution/registry)
+
+
+
+## Repository naming [#repository-naming]
+
+Your GitHub repository **must** be named `terraform-provider-{name}` (all lowercase) –
+
+```
+github.com/acme/terraform-provider-mycloud
+```
+
+***
+
+## Generate and register a GPG key [#generate-and-register-a-gpg-key]
+
+The Terraform Registry verifies that release assets are signed. Generate a **4096-bit RSA key** — ECC keys are not accepted.
+
+```bash
+# Generate the key
+gpg --full-generate-key
+# Choose: RSA and RSA, 4096 bits, does not expire
+
+# Export the public key
+gpg --armor --export your@email.com
+```
+
+Go to [registry.terraform.io → Settings → GPG Keys](https://registry.terraform.io/settings/gpg-keys) and paste the public key block under the namespace that owns your provider.
+
+***
+
+## Connect the registry [#connect-the-registry]
+
+<Steps>
+  <Step>
+    ### Publish from the registry UI [#publish-from-the-registry-ui]
+
+    1. Go to [registry.terraform.io → Publish → Provider](https://registry.terraform.io/publish/provider).
+    2. Select your GitHub organisation and the `terraform-provider-mycloud` repository.
+    3. The registry creates a webhook — future `v*` releases are indexed automatically.
+  </Step>
+
+  <Step>
+    ### Verify the published provider [#verify-the-published-provider]
+
+    ```hcl title="main.tf"
+    terraform {
+      required_providers {
+        mycloud = {
+          source  = "acme/mycloud"
+          version = "~> 1.0"
+        }
+      }
+    }
+    ```
+
+    ```bash
+    terraform init   # downloads and verifies the binary signature
+    terraform plan
+    ```
+  </Step>
+</Steps>
+
+***
+
+## Generating provider documentation [#generating-provider-documentation]
+
+The [Terraform Registry](https://registry.terraform.io) displays documentation from a `docs/` directory in your repository. [`tfplugindocs`](https://github.com/hashicorp/terraform-plugin-docs) generates it automatically from your provider's live schema.
+
+<Callout type="info">
+  `tfplugindocs` is a Go tool, but it works with **any** provider language — it launches your pre-built binary via `terraform providers schema -json`. No Go knowledge required.
+</Callout>
+
+### Prerequisites [#prerequisites]
+
+* Provider binary built via `terrably build`.
+* `tfplugindocs` installed (download a binary from the [releases page](https://github.com/hashicorp/terraform-plugin-docs/releases)).
+* `terraform` CLI on your `PATH`.
+
+### Generate docs [#generate-docs]
+
+```bash
+# 1. Build the binary
+pnpm run build
+
+# 2. Export the provider schema via Terraform
+#    (uses tf-workspace/.terraformrc dev_overrides to launch your binary)
+cd tf-workspace
+TF_CLI_CONFIG_FILE=.terraformrc terraform providers schema -json > ../providers-schema.json
+cd ..
+
+# 3. Generate the docs/ directory
+tfplugindocs generate \
+  --providers-schema ./providers-schema.json \
+  --provider-name mycloud
+
+# 4. Clean up
+rm providers-schema.json
+```
+
+`tfplugindocs` writes `docs/` with the layout the registry expects –
+
+<Files>
+  <Folder name="docs">
+    <File name="index.md" />
+
+    <Folder name="resources">
+      <File name="server.md" />
+    </Folder>
+
+    <Folder name="data-sources">
+      <File name="regions.md" />
+    </Folder>
+  </Folder>
+</Files>
+
+Commit the `docs/` folder and include it in the release — the registry reads it directly from the tag.
+
+### Customising output [#customising-output]
+
+Place example files alongside your provider and `tfplugindocs` includes them automatically as code blocks –
+
+<Files>
+  <Folder name="examples">
+    <Folder name="provider">
+      <File name="provider.tf" />
+    </Folder>
+
+    <Folder name="resources">
+      <Folder name="server">
+        <File name="resource.tf" />
+      </Folder>
+    </Folder>
+  </Folder>
+</Files>
+
+For full template control, see the [tfplugindocs template guide](https://github.com/hashicorp/terraform-plugin-docs#templates).
+
+
+# Schema migration (/docs/distribution/schema-migration)
+
+
+
+## When to bump schema version [#when-to-bump-schema-version]
+
+Every resource's `Schema` carries an integer `version` (default `0`). Terraform compares the version stored in state against the current one. If they differ, it calls `Resource.upgrade()` once for each intervening version. Additionally, read [Terraform's state upgrade documentation](https://developer.hashicorp.com/terraform/plugin/framework/resources/state-upgrade).
+
+**Bump the version whenever the shape of stored state changes –**
+
+| Change                                                 | Bump?                                                        |
+| ------------------------------------------------------ | ------------------------------------------------------------ |
+| Rename an attribute                                    | Yes                                                          |
+| Remove an attribute                                    | Yes                                                          |
+| Change an attribute's type                             | Yes                                                          |
+| Add a new attribute (`optional: true, computed: true`) | No — see [Adding new attributes](#common-migration-patterns) |
+| Bug fix, description change                            | No                                                           |
+
+***
+
+## Implementing `upgrade()` [#implementing-upgrade]
+
+```typescript title="src/resources/server.ts"
+// Before (v0)
+getSchema(): Schema {
+  return new Schema([
+    new Attribute("id",     types.string(), { computed: true }),
+    new Attribute("zone",   types.string(), { required: true }), // ← will be renamed
+  ], [], 0);
+}
+
+// After (v1) — "zone" renamed to "availability_zone"
+getSchema(): Schema {
+  return new Schema([
+    new Attribute("id",                 types.string(), { computed: true }),
+    new Attribute("availability_zone",  types.string(), { required: true }),
+  ], [], 1); // ← bump to 1
+}
+
+upgrade(ctx: UpgradeContext, version: number, old: State): State {
+  switch (version) {
+    case 0: {
+      // v0 → v1: rename "zone" to "availability_zone"
+      const { zone, ...rest } = old;
+      return { ...rest, availability_zone: zone };
+    }
+    default:
+      ctx.diagnostics.addError(
+        "Unknown schema version",
+        `Cannot upgrade state from version ${version}.`,
+      );
+      return old;
+  }
+}
+```
+
+### Chaining multiple upgrades [#chaining-multiple-upgrades]
+
+When shipping a second breaking change after `v1`, add a new `case` and bump to `v2`. Terraform calls `upgrade()` once per stored version, chaining through each case in sequence.
+
+```typescript
+upgrade(ctx: UpgradeContext, version: number, old: State): State {
+  switch (version) {
+    case 0: {
+      // v0 → v1: rename "zone" → "availability_zone"
+      const { zone, ...rest } = old;
+      // Recursively process the next version
+      return this.upgrade(ctx, 1, { ...rest, availability_zone: zone });
+    }
+    case 1: {
+      // v1 → v2: split "size_gb" into "disk_size_gb" + "disk_type"
+      const { size_gb, ...rest } = old;
+      return { ...rest, disk_size_gb: size_gb, disk_type: "ssd" };
+    }
+    default:
+      ctx.diagnostics.addError("Unknown schema version", `Cannot upgrade from v${version}.`);
+      return old;
+  }
+}
+```
+
+***
+
+## Common migration patterns [#common-migration-patterns]
+
+<Tabs groupId="migration" items="[&#x22;Rename&#x22;, &#x22;Remove&#x22;, &#x22;Type change&#x22;, &#x22;Split&#x22;, &#x22;Add new&#x22;]">
+  <Tab value="Rename">
+    ```typescript
+    case 0: {
+      const { old_name, ...rest } = old;
+      return { ...rest, new_name: old_name };
+    }
+    ```
+  </Tab>
+
+  <Tab value="Remove">
+    ```typescript
+    case 0: {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { deprecated_field, ...rest } = old;
+      return rest;
+    }
+    ```
+  </Tab>
+
+  <Tab value="Type change">
+    ```typescript
+    // string → number
+    case 0: {
+      return {
+        ...old,
+        port: Number(old["port"] as string),
+      };
+    }
+    ```
+  </Tab>
+
+  <Tab value="Split">
+    ```typescript
+    // Split one attribute into two
+    case 0: {
+      const { endpoint, ...rest } = old;
+      const url = new URL(endpoint as string);
+      return {
+        ...rest,
+        host: url.hostname,
+        port: Number(url.port) || 443,
+      };
+    }
+    ```
+  </Tab>
+
+  <Tab value="Add new">
+    Adding a new attribute **does not require a version bump** if you declare it as `optional: true, computed: true` with a sensible default. Existing state objects read back `null`; your `read()` backfills the value from the live API on the next refresh.
+
+    ```typescript
+    // NEW attribute — existing state is valid because it's optional+computed
+    new Attribute("disk_type", types.string(), {
+      optional: true,
+      computed: true,
+      default: "ssd",
+    })
+    ```
+
+    ```typescript
+    read(ctx: ReadContext, current: State): State {
+      const live = await this.api.getServer(current["id"] as string);
+      return {
+        ...current,
+        ...live,
+        // Backfill on first read of a resource created before this attribute existed
+        disk_type: live.diskType ?? current["disk_type"] ?? "ssd",
+      };
+    }
+    ```
+  </Tab>
+</Tabs>
+
+***
+
+## Semantic versioning [#semantic-versioning]
+
+Follow [Semantic Versioning](https://semver.org/) with a `v` prefix (`v1.0.0`).
+
+| Change                                                          | Bump    |
+| --------------------------------------------------------------- | ------- |
+| Breaking schema change (removed/renamed attribute, type change) | `MAJOR` |
+| New resource, data source, or attribute                         | `MINOR` |
+| Bug fix, performance improvement                                | `PATCH` |
+
+
+# Structured logging (/docs/reference/logging)
+
+
+
+## Why stderr? [#why-stderr]
+
+`stdout` is reserved for the go-plugin handshake protocol. Any non-handshake bytes on stdout will corrupt the gRPC connection. Always write logs to `stderr`.
+
+terrably uses [pino](https://getpino.io) to emit newline-delimited JSON in the [go-hclog](https://github.com/hashicorp/go-hclog) format –
+
+```
+{"@level":"debug","@timestamp":"2026-04-22T10:30:00.123000Z","@module":"provider","@message":"provider configured","endpoint":"https://api.example.com"}
+```
+
+***
+
+## `createLogger(module?)` [#createloggermodule]
+
+```typescript
+import { createLogger } from "terrably";
+import type { Logger } from "terrably";
+
+createLogger(module?: string): Logger
+```
+
+<TypeTable
+  type="{
+  module: {
+    description: &#x22;Value for the `@module` field. Use dot-separated names for subsystems: `\&#x22;provider.http_client\&#x22;`.&#x22;,
+    type: &#x22;string&#x22;,
+    default: '&#x22;provider&#x22;',
+  },
+}"
+/>
+
+***
+
+## `Logger` interface [#logger-interface]
+
+```typescript
+interface Logger {
+  trace(msg: string, fields?: Record<string, unknown>): void;
+  debug(msg: string, fields?: Record<string, unknown>): void;
+  info (msg: string, fields?: Record<string, unknown>): void;
+  warn (msg: string, fields?: Record<string, unknown>): void;
+  error(msg: string, fields?: Record<string, unknown>): void;
+  child(fields: Record<string, unknown>): Logger;
+}
+```
+
+Extra `fields` are merged at the root of the JSON object alongside the `@`-prefixed fields.
+
+***
+
+## Log levels [#log-levels]
+
+<TypeTable
+  type="{
+  trace: {
+    description: &#x22;Per-attribute values, raw request/response bodies.&#x22;,
+    type: '&#x22;trace&#x22;',
+  },
+  debug: {
+    description: &#x22;API calls, state transitions, computed diffs.&#x22;,
+    type: '&#x22;debug&#x22;',
+  },
+  info: {
+    description: &#x22;High-level lifecycle events (configured, created, destroyed).&#x22;,
+    type: '&#x22;info&#x22;',
+  },
+  warn: {
+    description: &#x22;Recoverable issues — deprecated config, retried calls.&#x22;,
+    type: '&#x22;warn&#x22;',
+  },
+  error: {
+    description: &#x22;Unexpected internal errors that supplement a `Diagnostic`.&#x22;,
+    type: '&#x22;error&#x22;',
+  },
+}"
+/>
+
+***
+
+## Environment variables [#environment-variables]
+
+Log level is resolved from the environment when `createLogger()` is first called. If neither variable is set, the logger is **silent** — no output when the provider runs outside of Terraform.
+
+| Variable          | Wins over   | Description                                                   |
+| ----------------- | ----------- | ------------------------------------------------------------- |
+| `TF_LOG`          | everything  | Global override — applies to Terraform core **and** providers |
+| `TF_LOG_PROVIDER` | *(default)* | Provider-specific level — does not affect Terraform core logs |
+
+Valid values (case-insensitive): `TRACE` · `DEBUG` · `INFO` · `WARN` · `ERROR` · `OFF`
+
+`TF_LOG=JSON` is treated as `TRACE` (the SDK always emits JSON).
+
+***
+
+## Usage [#usage]
+
+### Basic [#basic]
+
+```typescript
+import { createLogger } from "terrably";
+
+const log = createLogger("provider");
+
+export class MyProvider implements Provider {
+  configure(_diags, config) {
+    log.info("provider configured", { endpoint: config["api_url"] });
+  }
+}
+```
+
+### Child loggers / subsystems [#child-loggers--subsystems]
+
+Use `logger.child()` to create a logger that inherits level and config but merges additional **persistent** fields into every line:
+
+```typescript
+// Create a named subsystem logger
+const clientLog = log.child({ "@module": "provider.http_client" });
+clientLog.debug("sending request", { url: "https://api.example.com/servers", method: "POST" });
+// → {"@level":"debug","@module":"provider.http_client","@message":"sending request","url":"...","method":"POST"}
+```
+
+Attach request-scoped context:
+
+```typescript
+export class ServerResource implements Resource {
+  private log = createLogger("provider.server");
+
+  async create(ctx: CreateContext, config: State) {
+    const reqLog = this.log.child({ resource: "server", name: config["name"] });
+    reqLog.debug("creating resource");
+    const server = await apiClient.createServer(config);
+    reqLog.info("resource created", { id: server.id });
+  }
+}
+```
+
+### Accessing logs via Terraform [#accessing-logs-via-terraform]
+
+```bash
+# Provider-only logs, suppress core noise
+TF_LOG_PROVIDER=DEBUG terraform apply
+
+# All levels, write to file
+TF_LOG=DEBUG TF_LOG_PATH=./tf.log terraform apply
+
+# Filter provider lines from mixed output
+TF_LOG=TRACE terraform apply 2>&1 | grep '"@module":"provider'
+```
+
+
+# serve() (/docs/reference/serve)
+
+
+
+## Signature [#signature]
+
+```typescript
+import { serve } from "terrably";
+
+serve(provider: Provider, opts?: ServeOptions): Promise<void>
+```
+
+## `ServeOptions` [#serveoptions]
+
+<TypeTable
+  type="{
+  socketPath: {
+    description: &#x22;Unix socket path to listen on. Defaults to an auto-generated path under `os.tmpdir()`.&#x22;,
+    type: &#x22;string&#x22;,
+  },
+  dev: {
+    description: &#x22;Dev mode: use an insecure socket and print the `TF_REATTACH_PROVIDERS` export instead of the handshake line. Equivalent to `TF_PLUGIN_DEBUG=1`.&#x22;,
+    type: &#x22;boolean&#x22;,
+    default: &#x22;false&#x22;,
+  },
+  protoDir: {
+    description: &#x22;Path to directory containing the `.proto` files. Defaults to the `proto/` directory bundled with terrably. Override when using a custom build pipeline.&#x22;,
+    type: &#x22;string&#x22;,
+  },
+}"
+/>
+
+***
+
+## Normal mode [#normal-mode]
+
+Terraform sets `TF_PLUGIN_MAGIC_COOKIE` before spawning your binary. `serve()` validates the cookie, generates a self-signed TLS certificate (cached at `~/.cache/tf-js-provider/ssl_cert.json` for 7 days), starts the server, and prints the handshake on stdout.
+
+```typescript title="src/main.ts"
+import { serve } from "terrably";
+import { MyProvider } from "./provider.js";
+
+serve(new MyProvider());
+```
+
+***
+
+## Dev mode [#dev-mode]
+
+Set `dev: true` or `TF_PLUGIN_DEBUG=1`. The server uses an insecure socket and prints a `TF_REATTACH_PROVIDERS` line instead of the handshake. Copy the export into your shell and then run Terraform normally.
+
+```typescript title="src/main.ts"
+import { serve } from "terrably";
+import { MyProvider } from "./provider.js";
+
+const dev = process.argv.includes("--dev") || process.env["TF_PLUGIN_DEBUG"] === "1";
+serve(new MyProvider(), { dev }).catch(console.error);
+```
+
+```
+# Output when started in dev mode:
+Dev mode — set this env var:
+
+    export TF_REATTACH_PROVIDERS='{"registry.terraform.io/myorg/mycloud":{"Protocol":"grpc","ProtocolVersion":6,"Pid":12345,"Test":true,"Addr":{"Network":"unix","String":"/tmp/tf-js-provider-12345-...sock"}}}'
+```
+
+See [Local testing](/docs/development/local-testing#mode-2--dev-mode) for the full workflow.
+
+***
+
+## Environment variables [#environment-variables]
+
+| Variable                     | Effect                                                                  |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| `TF_PLUGIN_MAGIC_COOKIE`     | **Must** equal the Terraform magic value. Validated on startup.         |
+| `TF_PLUGIN_DEBUG`            | Set to `1` to enable dev mode without modifying code.                   |
+| `TF_LOG` / `TF_LOG_PROVIDER` | Controls log level (see [Structured logging](/docs/reference/logging)). |
+| `TF_PROTO_DIR`               | Overrides the proto file directory used by `serve()`.                   |
+
+
+# State & Diagnostics (/docs/reference/state)
+
+
+
+## State [#state]
+
+```typescript
+type State = Record<string, unknown>;
+```
+
+State is a plain JavaScript object whose keys match attribute names in your schema. Values are decoded from Terraform's msgpack wire format before reaching your code, and re-encoded after you return.
+
+| Terraform type | JavaScript value    |
+| -------------- | ------------------- |
+| `string`       | `string`            |
+| `number`       | `number`            |
+| `bool`         | `boolean`           |
+| `list(T)`      | `T[]`               |
+| `set(T)`       | `T[]`               |
+| `map(T)`       | `Record<string, T>` |
+| not-yet-known  | `Unknown` singleton |
+| null / absent  | `null`              |
+
+State flows through lifecycle methods as plain object literals. You can spread, destructure, and return new objects freely –
+
+```typescript
+async update(ctx: UpdateContext, prior: State, planned: State): Promise<State> {
+  const server = await this.api.update(prior["id"] as string, {
+    name: planned["name"] as string,
+  });
+  // Merge live API response over the planned state
+  return { ...planned, ...server };
+}
+```
+
+***
+
+## Unknown [#unknown]
+
+```typescript
+import { Unknown } from "terrably";
+```
+
+`Unknown` is a singleton representing a Terraform value not yet known at plan time — displayed as `(known after apply)` in plan output.
+
+The framework automatically sets computed attributes to `Unknown` during planning. You can also set them explicitly in `plan()` –
+
+```typescript
+plan(_ctx: PlanContext, _prior: State | null, planned: State): State {
+  return {
+    ...planned,
+    // ip_address will be set by the API on create
+    ip_address: Unknown,
+    id: planned["id"] ?? Unknown,
+  };
+}
+```
+
+To check whether a value is unknown –
+
+```typescript
+import { Unknown } from "terrably";
+
+if (value === Unknown) {
+  // value is not yet known
+}
+```
+
+***
+
+## Diagnostics [#diagnostics]
+
+```typescript
+class Diagnostics {
+  addError(summary: string, detail?: string, path?: string[]): this;
+  addWarning(summary: string, detail?: string, path?: string[]): this;
+  hasErrors(): boolean;
+  readonly items: DiagnosticItem[];
+}
+```
+
+<TypeTable
+  type="{
+  summary: {
+    description: &#x22;Short error title shown in Terraform output. Required.&#x22;,
+    type: &#x22;string&#x22;,
+  },
+  detail: {
+    description: &#x22;Longer explanation. Shown below the summary.&#x22;,
+    type: &#x22;string&#x22;,
+  },
+  path: {
+    description: &#x22;Optional attribute path pointing to the problematic field, e.g. `[\&#x22;network_interface\&#x22;, \&#x22;ip_address\&#x22;]`. Terraform highlights the attribute in plan output.&#x22;,
+    type: &#x22;string[]&#x22;,
+  },
+}"
+/>
+
+### Errors vs warnings [#errors-vs-warnings]
+
+* **Errors**: Terraform aborts the current operation and displays the error. Any errors returned from `create` leave the resource in a tainted state.
+* **Warnings**: Terraform shows them but continues.
+
+### Pattern — validate config [#pattern--validate-config]
+
+```typescript
+validateConfig(diags: Diagnostics, config: State): void {
+  if (!config["token"] && !process.env["MYCLOUD_TOKEN"]) {
+    diags.addError(
+      "Missing required token",
+      'Set the `token` attribute or export MYCLOUD_TOKEN.',
+      ["token"],
+    );
+  }
+  const url = config["api_url"] as string | null;
+  if (url && !url.startsWith("https://")) {
+    diags.addWarning(
+      "Insecure API URL",
+      "The api_url does not use HTTPS. Credentials will be sent in cleartext.",
+      ["api_url"],
+    );
+  }
+}
+```
+
+### Pattern — validate resource config [#pattern--validate-resource-config]
+
+```typescript
+validate(diags: Diagnostics, _typeName: string, config: State): void {
+  const size = config["disk_size_gb"] as number;
+  if (size < 10 || size > 16384) {
+    diags.addError(
+      "Invalid disk size",
+      `disk_size_gb must be between 10 and 16384, got ${size}.`,
+      ["disk_size_gb"],
+    );
+  }
+}
+```

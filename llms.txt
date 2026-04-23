@@ -1,0 +1,22 @@
+# terrably
+
+- [Introduction](/docs): Build Terraform & OpenTofu providers in TypeScript, with full type safety and a zero-Go build pipeline.
+- [Getting started](/docs/getting-started): Scaffold, implement, build, and test your first Terraform provider in TypeScript in under 10 minutes.
+- Core concepts
+  - [Types & Schema](/docs/concepts/schema): The TfType system, Attribute, Block, NestedBlock, and Schema — terrably's building blocks for describing provider resources.
+  - [Provider](/docs/concepts/provider): The Provider interface — how terrably connects your TypeScript class to Terraform's plugin protocol.
+  - [Resources & Data Sources](/docs/concepts/resources): The Resource and DataSource interfaces — lifecycle methods, context objects, plan hooks, import, and state migration.
+  - [Provider-defined functions](/docs/concepts/functions): Expose pure, stateless functions callable from Terraform configuration with provider::name::function().
+- Development
+  - [Local testing](/docs/development/local-testing): Two workflows for iterating on your provider locally — dev_overrides for daily development, and dev mode for attaching a debugger.
+  - [Testing](/docs/development/testing): Unit testing resource logic with node:test, and running the full end-to-end suite against a real Terraform binary.
+  - [Debugging & troubleshooting](/docs/development/debugging): Attach a Node.js debugger, read structured provider logs, and fix common issues.
+- Reference
+  - [State & Diagnostics](/docs/reference/state): State, the Unknown sentinel, and Diagnostics — the data types that flow through every resource lifecycle method.
+  - [Structured logging](/docs/reference/logging): Emit structured JSON logs to stderr in the go-hclog format that Terraform parses and re-emits through its own log pipeline.
+  - [serve()](/docs/reference/serve): Start the gRPC server and perform the go-plugin handshake — the entry point for every terrably provider.
+- Distribution
+  - [Building & publishing](/docs/distribution): Build a self-contained binary, package release assets, and publish to the Terraform Registry.
+  - [CI release workflow](/docs/distribution/ci): Multi-platform GitHub Actions matrix that builds a native binary on each platform, then packages and publishes a signed GitHub Release.
+  - [Terraform Registry](/docs/distribution/registry): Repository naming, GPG key registration, connecting to the Terraform Registry, and generating provider documentation.
+  - [Schema migration](/docs/distribution/schema-migration): Increment schema version, implement upgrade() to migrate stored state, and common patterns for renaming, splitting, and removing attributes.
