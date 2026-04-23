@@ -2,6 +2,7 @@
   "name": "terrably",
   "version": "0.0.5",
   "description": "TypeScript-native Terraform provider authoring framework",
+  "homepage": "https://paambaati.github.io/terrably/",
   "author": {
     "name": "GP",
     "email": "me@httgp.com",
@@ -12,6 +13,14 @@
     "url": "https://github.com/paambaati/terrably",
     "directory": "packages/sdk"
   },
+  "bugs": "https://github.com/paambaati/terrably/issues",
+  "license": "MIT",
+  "keywords": [
+    "terraform",
+    "opentofu",
+    "provider",
+    "sdk"
+  ],
   "files": [
     "dist/",
     "proto/"
