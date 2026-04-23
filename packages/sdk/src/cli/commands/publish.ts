@@ -26,6 +26,7 @@
 import { execSync } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -150,7 +151,7 @@ function detectBinaries(binariesDir: string, baseName: string): PlatformBinary[]
       const [os, arch] = platform.split("_") as [string, string];
       const isWindows = process.platform === "win32";
       process.stderr.write(
-        `⚠  No platform-suffixed binaries found. Using ${plainName} as ${platform}.\n` +
+        `⚠️  No platform-suffixed binaries found. Using ${plainName} as ${platform}.\n` +
           `   For a multi-platform release, name each binary ` +
           `\`${baseName}_{os}_{arch}[.exe]\`.\n`
       );
@@ -178,14 +179,35 @@ function createZip(
   binaryNameInZip: string,
   zipPath: string
 ): void {
-  const zip = new AdmZip();
-  const binaryData = fs.readFileSync(binaryPath);
-
-  // Preserve executable bit in the zip entry (Unix permission 0o755 = 0o100755 in mode bits)
-  const unixAttrs = 0o100755 << 16; // high 16 bits = Unix attrs
-  zip.addFile(binaryNameInZip, binaryData, "", unixAttrs);
-
-  fs.writeFileSync(zipPath, zip.toBuffer());
+  if (process.platform !== "win32") {
+    // Use the system `zip` command on Unix/macOS.
+    //
+    // adm-zip does not set the "version made by" OS byte to Unix (3) in the
+    // ZIP central directory header. Go's archive/zip only honours the Unix
+    // permission bits in the external-attributes field when that OS byte is 3,
+    // so binaries zipped with adm-zip are extracted with 0000 permissions and
+    // Terraform cannot open them to compute a checksum.
+    //
+    // The system `zip` command sets the OS byte to Unix and preserves the
+    // execute bit correctly.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "terrably-zip-"));
+    const tmpBinary = path.join(tmpDir, binaryNameInZip);
+    try {
+      fs.copyFileSync(binaryPath, tmpBinary);
+      fs.chmodSync(tmpBinary, 0o755);
+      execSync(`zip -j ${JSON.stringify(zipPath)} ${JSON.stringify(tmpBinary)}`, { stdio: "pipe" });
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  } else {
+    // On Windows the build host has no system `zip`.  Use adm-zip instead.
+    // Windows Terraform ignores Unix permissions, so the missing OS byte
+    // is not a problem for .exe providers.
+    const zip = new AdmZip();
+    const binaryData = fs.readFileSync(binaryPath);
+    zip.addFile(binaryNameInZip, binaryData, "");
+    fs.writeFileSync(zipPath, zip.toBuffer());
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -448,7 +470,7 @@ export async function publishCommand(options: PublishOptions): Promise<void> {
     }
   } else {
     process.stdout.write(
-      `\n⚠  Skipping GPG signature (no --gpg-key or $GPG_FINGERPRINT set).\n` +
+      `\n⚠️  Skipping GPG signature (no --gpg-key or $GPG_FINGERPRINT set).\n` +
         `   The Terraform Registry REQUIRES a signature. Set GPG_FINGERPRINT or\n` +
         `   pass --gpg-key before publishing to the registry.\n`
     );
@@ -510,7 +532,7 @@ export async function publishCommand(options: PublishOptions): Promise<void> {
       const sizeKb = (fs.statSync(f).size / 1024).toFixed(0);
       process.stdout.write(`  ${path.basename(f).padEnd(60)} ${sizeKb.padStart(7)} KB\n`);
     }
-    process.stdout.write(`\nNext steps:\n`);
+    process.stdout.write(`\nNext steps –\n`);
     process.stdout.write(`  1. Upload these files to a GitHub Release tagged ${tag}\n`);
     process.stdout.write(`  2. Or run with --github-release to do it automatically\n`);
   }
