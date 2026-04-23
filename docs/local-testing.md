@@ -8,37 +8,30 @@ This guide covers every workflow you'll use while iterating on a Terraform provi
 
 | Mode | How Terraform finds your provider | Use when |
 |---|---|---|
-| **dev_overrides** | `~/.terraformrc` or `TF_CLI_CONFIG_FILE` points Terraform at a local binary | Daily development — fast iteration |
+| **`dev_overrides`** | `~/.terraformrc` or `TF_CLI_CONFIG_FILE` points Terraform at a local binary | Daily development — fast iteration |
 | **dev mode** | You start the provider manually; Terraform reattaches via `TF_REATTACH_PROVIDERS` | Attaching a debugger, inspecting logs in real time |
 
 ---
 
-## Mode 1 — dev_overrides (recommended for most work)
+## Mode 1 — `dev_overrides`
 
 This is the simplest workflow. Terraform calls your local binary as if it were a released provider.
 
-### Step 1 – Build your provider
+### Step 1 – Build the provider binary
+
+`terrably build` compiles TypeScript, bundles with esbuild, and produces a self-contained SEA binary in one step. Requires Node.js ≥ 25.5.0.
 
 ```bash
 pnpm run build
 ```
 
-### Step 2 – Build the provider binary
-
-Terraform invokes providers as OS processes. Build a self-contained SEA binary –
-
-```bash
-# Requires Node.js >= 25.5.0
-pnpm run build:sea
-```
-
 The output is `bin/terraform-provider-<name>` — a native binary that embeds the Node.js runtime. No Node.js or bash is required on the machine running `terraform apply`.
 
-### Step 3 – Configure dev_overrides
+### Step 2 – Configure `dev_overrides`
 
 You can either write a global `~/.terraformrc` or a local file and point `TF_CLI_CONFIG_FILE` at it.
 
-**Option A — local file (recommended, keeps your global config clean):**
+**Option A — local file (recommended, keeps your global config clean)**
 
 ```hcl
 # tf-workspace/.terraformrc
@@ -52,7 +45,7 @@ provider_installation {
 
 **Option B — edit `~/.terraformrc`** (affects all Terraform workspaces on your machine).
 
-### Step 4 – Write a Terraform config
+### Step 3 – Write a Terraform config
 
 ```hcl
 # tf-workspace/main.tf
@@ -72,7 +65,7 @@ resource "mycloud_server" "example" {
 }
 ```
 
-### Step 5 – Run Terraform
+### Step 4 – Run Terraform
 
 ```bash
 cd tf-workspace
@@ -105,7 +98,7 @@ Use this when you want to attach a debugger, print detailed logs, or inspect exa
 
 ### Step 1 – Start your provider manually
 
-Your `main.ts` should respect the `--dev` flag or `TF_PLUGIN_DEBUG=1`:
+Your `main.ts` should respect the `--dev` flag or `TF_PLUGIN_DEBUG=1` –
 
 ```typescript
 // src/main.ts
