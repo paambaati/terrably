@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5](https://github.com/paambaati/terrably/compare/v0.0.4...v0.0.5) (2026-04-23)
+
+
+### Features
+
+* new documentation website ([#4](https://github.com/paambaati/terrably/issues/4)) ([89805d1](https://github.com/paambaati/terrably/commit/89805d19cf838425f949705bcf5d78962863903f))
+
 ## [0.0.4](https://github.com/paambaati/terrably/compare/v0.0.3...v0.0.4) (2026-04-23)
 
 
