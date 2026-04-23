@@ -4,7 +4,7 @@ import { baseOptions } from '@/lib/layout.shared';
 import { source } from '@/lib/source';
 import { GithubInfo } from 'fumadocs-ui/components/github-info';
 import { NpmInfo } from '@/components/npm-info';
-import { VersionSwitcher } from '@/components/version-switcher';
+
 
 export default function Layout({ children }: { children: ReactNode }) {
   const opts = baseOptions();
@@ -14,10 +14,6 @@ export default function Layout({ children }: { children: ReactNode }) {
       {...opts}
       links={[
         ...(opts.links ?? []),
-        {
-          type: 'custom',
-          children: <VersionSwitcher />,
-        },
         {
           type: 'custom',
           children: (
