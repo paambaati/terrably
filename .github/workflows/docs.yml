@@ -44,8 +44,9 @@ jobs:
       - name: Add .nojekyll
         run: touch packages/docs/out/.nojekyll
 
-      - name: Deploy docs → gh-pages
+      - name: Deploy docs
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: packages/docs/out
+          branch: gh-pages
           clean: true
