@@ -1,0 +1,153 @@
+---
+title: Structured logging
+description: Emit structured JSON logs to stderr in the go-hclog format that Terraform parses and re-emits through its own log pipeline.
+---
+
+## Why stderr?
+
+`stdout` is reserved for the go-plugin handshake protocol. Any non-handshake bytes on stdout will corrupt the gRPC connection. Always write logs to `stderr`.
+
+terrably uses [pino](https://getpino.io) to emit newline-delimited JSON in the [go-hclog](https://github.com/hashicorp/go-hclog) format –
+
+```
+{"@level":"debug","@timestamp":"2026-04-22T10:30:00.123000Z","@module":"provider","@message":"provider configured","endpoint":"https://api.example.com"}
+```
+
+---
+
+## `createLogger(module?)`
+
+```typescript
+import { createLogger } from "terrably";
+import type { Logger } from "terrably";
+
+createLogger(module?: string): Logger
+```
+
+<TypeTable
+  type={{
+    module: {
+      description: "Value for the `@module` field. Use dot-separated names for subsystems: `\"provider.http_client\"`.",
+      type: "string",
+      default: '"provider"',
+    },
+  }}
+/>
+
+---
+
+## `Logger` interface
+
+```typescript
+interface Logger {
+  trace(msg: string, fields?: Record<string, unknown>): void;
+  debug(msg: string, fields?: Record<string, unknown>): void;
+  info (msg: string, fields?: Record<string, unknown>): void;
+  warn (msg: string, fields?: Record<string, unknown>): void;
+  error(msg: string, fields?: Record<string, unknown>): void;
+  child(fields: Record<string, unknown>): Logger;
+}
+```
+
+Extra `fields` are merged at the root of the JSON object alongside the `@`-prefixed fields.
+
+---
+
+## Log levels
+
+<TypeTable
+  type={{
+    trace: {
+      description: "Per-attribute values, raw request/response bodies.",
+      type: '"trace"',
+    },
+    debug: {
+      description: "API calls, state transitions, computed diffs.",
+      type: '"debug"',
+    },
+    info: {
+      description: "High-level lifecycle events (configured, created, destroyed).",
+      type: '"info"',
+    },
+    warn: {
+      description: "Recoverable issues — deprecated config, retried calls.",
+      type: '"warn"',
+    },
+    error: {
+      description: "Unexpected internal errors that supplement a `Diagnostic`.",
+      type: '"error"',
+    },
+  }}
+/>
+
+---
+
+## Environment variables
+
+Log level is resolved from the environment when `createLogger()` is first called. If neither variable is set, the logger is **silent** — no output when the provider runs outside of Terraform.
+
+| Variable | Wins over | Description |
+|---|---|---|
+| `TF_LOG` | everything | Global override — applies to Terraform core **and** providers |
+| `TF_LOG_PROVIDER` | *(default)* | Provider-specific level — does not affect Terraform core logs |
+
+Valid values (case-insensitive): `TRACE` · `DEBUG` · `INFO` · `WARN` · `ERROR` · `OFF`
+
+`TF_LOG=JSON` is treated as `TRACE` (the SDK always emits JSON).
+
+---
+
+## Usage
+
+### Basic
+
+```typescript
+import { createLogger } from "terrably";
+
+const log = createLogger("provider");
+
+export class MyProvider implements Provider {
+  configure(_diags, config) {
+    log.info("provider configured", { endpoint: config["api_url"] });
+  }
+}
+```
+
+### Child loggers / subsystems
+
+Use `logger.child()` to create a logger that inherits level and config but merges additional **persistent** fields into every line:
+
+```typescript
+// Create a named subsystem logger
+const clientLog = log.child({ "@module": "provider.http_client" });
+clientLog.debug("sending request", { url: "https://api.example.com/servers", method: "POST" });
+// → {"@level":"debug","@module":"provider.http_client","@message":"sending request","url":"...","method":"POST"}
+```
+
+Attach request-scoped context:
+
+```typescript
+export class ServerResource implements Resource {
+  private log = createLogger("provider.server");
+
+  async create(ctx: CreateContext, config: State) {
+    const reqLog = this.log.child({ resource: "server", name: config["name"] });
+    reqLog.debug("creating resource");
+    const server = await apiClient.createServer(config);
+    reqLog.info("resource created", { id: server.id });
+  }
+}
+```
+
+### Accessing logs via Terraform
+
+```bash
+# Provider-only logs, suppress core noise
+TF_LOG_PROVIDER=DEBUG terraform apply
+
+# All levels, write to file
+TF_LOG=DEBUG TF_LOG_PATH=./tf.log terraform apply
+
+# Filter provider lines from mixed output
+TF_LOG=TRACE terraform apply 2>&1 | grep '"@module":"provider'
+```

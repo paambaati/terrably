@@ -1,33 +1,35 @@
 ---
 title: Introduction
-description: TypeScript-native Terraform/OpenTofu provider authoring framework.
+description: Build Terraform & OpenTofu providers in TypeScript, with full type safety and a zero-Go build pipeline.
 full: true
 ---
 
 # terrably
 
-`terrably` lets you write [Terraform providers](https://developer.hashicorp.com/terraform/plugin) in **TypeScript**, with full type safety and a zero-Go build pipeline.
+`terrably` lets you write [Terraform](https://developer.hashicorp.com/terraform/plugin) and [OpenTofu](https://opentofu.org) providers in **TypeScript** — full type safety, a familiar ecosystem, and a zero-Go build pipeline.
 
-Providers are compiled into self-contained [Node.js Single Executable Application (SEA)](https://nodejs.org/api/single-executable-applications.html) binaries — no Node.js installation required on the machines running Terraform.
+Providers compile into self-contained [Node.js Single Executable Application](https://nodejs.org/api/single-executable-applications.html) binaries. The Node.js runtime is bundled inside. Operators run `terraform apply` exactly as they would with any Go provider — no Node.js installation required on their machines.
 
-## Quick start
-
-```bash
-# Install the CLI
-npm install -g terrably
-
-# Scaffold a new provider project
-terrably new
-
-# Build and test locally
-npm run build:binary
-cd tf-workspace && terraform plan
+```npm
+# Scaffold, implement, build
+npx terrably new mycloud
+cd terraform-provider-mycloud
+npm install
+npm run build
+# → bin/terraform-provider-mycloud (~130 MB, Node.js runtime embedded)
 ```
 
-## What's in these docs
-
-| Guide | What you'll learn |
-|---|---|
-| [Local Testing](/docs/local-testing) | dev_overrides, dev mode, unit tests, E2E |
-| [API Reference](/docs/api-reference) | Every public export — types, schema, interfaces, state |
-| [Distribution](/docs/distribution) | Multi-platform CI, GPG signing, Terraform Registry |
+<Cards>
+  <Card href="/docs/getting-started" title="Getting started" icon={<RocketIcon />}>
+    Scaffold your first provider and run `terraform plan` in 10 minutes.
+  </Card>
+  <Card href="/docs/concepts/schema" title="Core concepts" icon={<BookOpenIcon />}>
+    Types, schema, resource lifecycle, provider-defined functions.
+  </Card>
+  <Card href="/docs/development/local-testing" title="Development" icon={<WrenchIcon />}>
+    dev_overrides, dev mode, unit tests, debugger, and troubleshooting.
+  </Card>
+  <Card href="/docs/distribution" title="Distribution" icon={<UploadIcon />}>
+    Multi-platform CI, GPG signing, and Terraform Registry publishing.
+  </Card>
+</Cards>

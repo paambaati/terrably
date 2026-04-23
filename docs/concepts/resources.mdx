@@ -1,0 +1,232 @@
+---
+title: Resources & Data Sources
+description: The Resource and DataSource interfaces — lifecycle methods, context objects, plan hooks, import, and state migration.
+---
+
+## `Resource` interface
+
+```typescript
+interface Resource {
+  getName(): string;       // Short type name, e.g. "server" → "mycloud_server"
+  getSchema(): Schema;
+
+  // Required lifecycle methods (all may be async)
+  create(ctx: CreateContext, planned: State): State | Promise<State>;
+  read(ctx: ReadContext, current: State): State | null | Promise<State | null>;
+  update(ctx: UpdateContext, prior: State, planned: State): State | Promise<State>;
+  delete(ctx: DeleteContext, current: State): void | Promise<void>;
+
+  // Optional hooks
+  validate?(diags: Diagnostics, typeName: string, config: State): void;
+  plan?(ctx: PlanContext, prior: State | null, planned: State): State | Promise<State>;
+  import?(ctx: ImportContext, id: string): State | null | Promise<State | null>;
+  upgrade?(ctx: UpgradeContext, version: number, old: State): State | Promise<State>;
+}
+
+type ResourceClass = new (provider: Provider) => Resource;
+```
+
+## Lifecycle methods
+
+### `create(ctx, planned)`
+
+Called during `terraform apply` when creating a new resource.
+
+- `planned` — the user's config with computed fields set to `Unknown`
+- Return the **full new state** including all computed fields (e.g. `id`, `ip_address`)
+- Add errors to `ctx.diagnostics` to abort the create; Terraform marks the resource as tainted
+
+```typescript
+async create(ctx: CreateContext, planned: State): Promise<State> {
+  const resp = await fetch(`${this.provider.apiBase}/servers`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: planned["name"], region: planned["region"] }),
+  });
+  if (!resp.ok) {
+    ctx.diagnostics.addError("API error", await resp.text());
+    return planned; // return something; Terraform taints the resource on error
+  }
+  return resp.json(); // must include all computed fields
+}
+```
+
+### `read(ctx, current)`
+
+Called during `terraform refresh` and before plan/apply to detect drift.
+
+- Return `null` if the resource no longer exists → Terraform plans a re-create
+- Return updated state to reflect any drift
+
+```typescript
+async read(_ctx: ReadContext, current: State): Promise<State | null> {
+  const resp = await fetch(`${this.provider.apiBase}/servers/${current["id"]}`);
+  if (resp.status === 404) return null; // triggers re-create on next apply
+  if (!resp.ok) return current; // return current state on transient errors
+  return resp.json();
+}
+```
+
+### `update(ctx, prior, planned)`
+
+Called during `terraform apply` for in-place updates. `prior` is the current state; `planned` is what the user wants. Return the resulting state.
+
+```typescript
+async update(ctx: UpdateContext, prior: State, planned: State): Promise<State> {
+  // ctx.changedFields is a Set<string> of attribute names that changed
+  const resp = await fetch(`${this.provider.apiBase}/servers/${prior["id"]}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: planned["name"] }),
+  });
+  if (!resp.ok) { ctx.diagnostics.addError("update failed", await resp.text()); return prior; }
+  return resp.json();
+}
+```
+
+### `delete(ctx, current)`
+
+Called during `terraform destroy`. No return value.
+
+```typescript
+async delete(_ctx: DeleteContext, current: State): Promise<void> {
+  const resp = await fetch(`${this.provider.apiBase}/servers/${current["id"]}`, { method: "DELETE" });
+  if (!resp.ok && resp.status !== 404) {
+    // 404 is fine — resource already gone
+    _ctx.diagnostics.addError("delete failed", await resp.text());
+  }
+}
+```
+
+## Optional hooks
+
+### `validate(diags, typeName, config)`
+
+Custom validation during `terraform validate` / `terraform plan`. Called before `create` or `update`. Use this for cross-attribute validation that the schema can't express (e.g. "if `region` is `us-east-1` then `zone` must be set").
+
+```typescript
+validate(diags: Diagnostics, _typeName: string, config: State): void {
+  if (config["region"] === "us-east-1" && !config["zone"]) {
+    diags.addError(
+      "zone required for us-east-1",
+      "The us-east-1 region requires an explicit availability zone.",
+      ["zone"],
+    );
+  }
+}
+```
+
+### `plan(ctx, prior, planned)`
+
+Override the default plan behaviour. Useful for marking attributes as `Unknown` ([known after apply](https://developer.hashicorp.com/terraform/plugin/framework/handling-data/terraform-concepts#unknown-values)) before you know what the API will return.
+
+```typescript
+plan(_ctx: PlanContext, _prior: State | null, planned: State): State {
+  return {
+    ...planned,
+    // ip_address is not known until the server is created
+    ip_address: Unknown,
+    // id is always computed on create
+    id: planned["id"] ?? Unknown,
+  };
+}
+```
+
+### `import(ctx, id)`
+
+Support [`terraform import`](https://developer.hashicorp.com/terraform/cli/import). Parse the `id` string and return the current state from the API, or `null` if the resource doesn't exist.
+
+```typescript
+async import(_ctx: ImportContext, id: string): Promise<State | null> {
+  const resp = await fetch(`${this.provider.apiBase}/servers/${id}`);
+  if (resp.status === 404) return null;
+  return resp.json();
+}
+```
+
+After importing, Terraform records the returned state and generates a plan to reconcile any differences with the config.
+
+### `upgrade(ctx, version, old)`
+
+Migrate state when the schema `version` changes. See [Schema migration](/docs/distribution/schema-migration) for full patterns.
+
+## Context objects
+
+Every lifecycle method receives a context as its first argument.
+
+```typescript
+interface BaseContext {
+  readonly diagnostics: Diagnostics;
+  readonly typeName: string;       // e.g. "mycloud_server"
+}
+
+// create, read, delete, import, upgrade — extend BaseContext with no extra fields
+
+interface UpdateContext extends BaseContext {
+  readonly changedFields: Set<string>; // attribute names that differ between prior and planned
+}
+
+interface PlanContext extends BaseContext {
+  readonly changedFields: Set<string>;
+}
+```
+
+---
+
+## `DataSource` interface
+
+Data sources are read-only. They have no create/update/delete — only `read`.
+
+```typescript
+interface DataSource {
+  getName(): string;       // e.g. "regions" → data.mycloud_regions
+  getSchema(): Schema;
+
+  validate?(diags: Diagnostics, typeName: string, config: State): void;
+
+  // Called during terraform plan. Return the fetched data or null.
+  read(ctx: ReadDataContext, config: State): State | null | Promise<State | null>;
+}
+
+type DataSourceClass = new (provider: Provider) => DataSource;
+```
+
+**Example:**
+
+```typescript title="src/data-sources/regions.ts"
+import { types, Attribute, Schema } from "terrably";
+import type { DataSource, ReadDataContext, Provider, State } from "terrably";
+
+export class RegionsDataSource implements DataSource {
+  constructor(private readonly provider: MyCloudProvider) {}
+
+  getName() { return "regions"; }
+
+  getSchema(): Schema {
+    return new Schema([
+      new Attribute("filter", types.string(), { optional: true }),
+      new Attribute("names",  types.list(types.string()), { computed: true }),
+    ]);
+  }
+
+  async read(_ctx: ReadDataContext, config: State): Promise<State> {
+    const resp = await fetch(`${this.provider.apiBase}/regions`);
+    const regions = (await resp.json()) as string[];
+    const filter = config["filter"] as string | null;
+    return {
+      filter: config["filter"],
+      names: filter ? regions.filter(r => r.includes(filter)) : regions,
+    };
+  }
+}
+```
+
+```hcl
+data "mycloud_regions" "filtered" {
+  filter = "us-"
+}
+
+output "regions" {
+  value = data.mycloud_regions.filtered.names
+}
+```

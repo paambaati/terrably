@@ -62,6 +62,11 @@ jobs:
           echo "root_base=/${REPO_NAME}"   >> "$GITHUB_OUTPUT"
           echo "ver_base=/${REPO_NAME}/${VERSION}" >> "$GITHUB_OUTPUT"
 
+      # ── Generate versions.json from git tags ────────────────────────────────
+      # Written to public/ so Next.js copies it into out/ for both builds.
+      - name: Generate versions.json
+        run: node scripts/gen-versions.mjs
+
       # ── Build the "latest" (root) site ──────────────────────────────────────
       - name: Build docs (root / latest)
         run: pnpm run build
@@ -69,6 +74,7 @@ jobs:
         env:
           NEXT_PUBLIC_BASE_PATH: ${{ steps.meta.outputs.root_base }}
           NEXT_PUBLIC_DOCS_VERSION: ${{ steps.meta.outputs.version }}
+          NEXT_PUBLIC_DOCS_REPO_BASE: ${{ steps.meta.outputs.root_base }}
 
       - name: Add .nojekyll (root)
         run: touch packages/docs/out/.nojekyll
@@ -91,6 +97,7 @@ jobs:
         env:
           NEXT_PUBLIC_BASE_PATH: ${{ steps.meta.outputs.ver_base }}
           NEXT_PUBLIC_DOCS_VERSION: ${{ steps.meta.outputs.version }}
+          NEXT_PUBLIC_DOCS_REPO_BASE: ${{ steps.meta.outputs.root_base }}
 
       - name: Add .nojekyll (versioned)
         if: steps.meta.outputs.is_tag == 'true'

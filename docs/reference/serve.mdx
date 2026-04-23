@@ -1,0 +1,79 @@
+---
+title: serve()
+description: Start the gRPC server and perform the go-plugin handshake — the entry point for every terrably provider.
+---
+
+## Signature
+
+```typescript
+import { serve } from "terrably";
+
+serve(provider: Provider, opts?: ServeOptions): Promise<void>
+```
+
+## `ServeOptions`
+
+<TypeTable
+  type={{
+    socketPath: {
+      description: "Unix socket path to listen on. Defaults to an auto-generated path under `os.tmpdir()`.",
+      type: "string",
+    },
+    dev: {
+      description: "Dev mode: use an insecure socket and print the `TF_REATTACH_PROVIDERS` export instead of the handshake line. Equivalent to `TF_PLUGIN_DEBUG=1`.",
+      type: "boolean",
+      default: "false",
+    },
+    protoDir: {
+      description: "Path to directory containing the `.proto` files. Defaults to the `proto/` directory bundled with terrably. Override when using a custom build pipeline.",
+      type: "string",
+    },
+  }}
+/>
+
+---
+
+## Normal mode
+
+Terraform sets `TF_PLUGIN_MAGIC_COOKIE` before spawning your binary. `serve()` validates the cookie, generates a self-signed TLS certificate (cached at `~/.cache/tf-js-provider/ssl_cert.json` for 7 days), starts the server, and prints the handshake on stdout.
+
+```typescript title="src/main.ts"
+import { serve } from "terrably";
+import { MyProvider } from "./provider.js";
+
+serve(new MyProvider());
+```
+
+---
+
+## Dev mode
+
+Set `dev: true` or `TF_PLUGIN_DEBUG=1`. The server uses an insecure socket and prints a `TF_REATTACH_PROVIDERS` line instead of the handshake. Copy the export into your shell and then run Terraform normally.
+
+```typescript title="src/main.ts"
+import { serve } from "terrably";
+import { MyProvider } from "./provider.js";
+
+const dev = process.argv.includes("--dev") || process.env["TF_PLUGIN_DEBUG"] === "1";
+serve(new MyProvider(), { dev }).catch(console.error);
+```
+
+```
+# Output when started in dev mode:
+Dev mode — set this env var:
+
+    export TF_REATTACH_PROVIDERS='{"registry.terraform.io/myorg/mycloud":{"Protocol":"grpc","ProtocolVersion":6,"Pid":12345,"Test":true,"Addr":{"Network":"unix","String":"/tmp/tf-js-provider-12345-...sock"}}}'
+```
+
+See [Local testing](/docs/development/local-testing#mode-2--dev-mode) for the full workflow.
+
+---
+
+## Environment variables
+
+| Variable | Effect |
+|---|---|
+| `TF_PLUGIN_MAGIC_COOKIE` | **Must** equal the Terraform magic value. Validated on startup. |
+| `TF_PLUGIN_DEBUG` | Set to `1` to enable dev mode without modifying code. |
+| `TF_LOG` / `TF_LOG_PROVIDER` | Controls log level (see [Structured logging](/docs/reference/logging)). |
+| `TF_PROTO_DIR` | Overrides the proto file directory used by `serve()`. |

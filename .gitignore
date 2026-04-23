@@ -2,9 +2,10 @@ dist/
 node_modules/
 .DS_Store
 
-# TypeScript source maps and declaration maps
+# TypeScript source maps, declaration maps & incremental build artifacts
 *.js.map
 *.d.ts.map
+tsconfig.tsbuildinfo
 
 # Compiled provider binaries (SEA)
 packages/reference-provider/bin-sea/

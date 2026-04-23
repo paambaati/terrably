@@ -1,0 +1,186 @@
+---
+title: Provider-defined functions
+description: Expose pure, stateless functions callable from Terraform configuration with provider::name::function().
+---
+
+[Terraform ≥ 1.8](https://developer.hashicorp.com/terraform/plugin/framework/functions/concepts) lets providers expose **pure functions** callable directly from HCL configuration –
+
+```hcl
+output "upper" {
+  value = provider::mycloud::uppercase("hello")
+  # → "HELLO"
+}
+```
+
+Functions are stateless and have no side effects. They run during plan, not apply.
+
+## Implementing a function
+
+```typescript title="src/functions/uppercase.ts"
+import type { TerrablyFunction, FunctionSignature, FunctionCallContext, Provider } from "terrably";
+import { types } from "terrably";
+
+export class UppercaseFunction implements TerrablyFunction {
+  constructor(_provider: Provider) {}
+
+  getName(): string { return "uppercase"; }
+
+  getSignature(): FunctionSignature {
+    return {
+      parameters: [
+        { name: "input", type: types.string(), description: "The string to convert." },
+      ],
+      returnType: { type: types.string() },
+      summary: "Convert a string to uppercase",
+    };
+  }
+
+  call(_ctx: FunctionCallContext, args: unknown[]): unknown {
+    return String(args[0]).toUpperCase();
+  }
+}
+```
+
+## Registering functions
+
+Add `getFunctions()` to your `Provider` implementation –
+
+```typescript title="src/provider.ts"
+import { UppercaseFunction } from "./functions/uppercase.js";
+
+export class MyCloudProvider implements Provider {
+  // ...existing methods...
+
+  getFunctions(): FunctionClass[] {
+    return [UppercaseFunction];
+  }
+}
+```
+
+## `FunctionSignature`
+
+<TypeTable
+  type={{
+    parameters: {
+      description: "Ordered list of named positional parameters.",
+      type: "FunctionParameter[]",
+    },
+    returnType: {
+      description: "The return type of the function.",
+      type: "FunctionReturn",
+    },
+    variadicParameter: {
+      description: "Optional. Accepts zero or more additional arguments of this type appended after positional ones.",
+      type: "FunctionParameter",
+    },
+    summary: {
+      description: "Short description shown in `terraform providers schema`.",
+      type: "string",
+    },
+    description: {
+      description: "Longer description.",
+      type: "string",
+    },
+    descriptionKind: {
+      description: "Format of description.",
+      type: '"plain" | "markdown"',
+      default: '"markdown"',
+    },
+    deprecationMessage: {
+      description: "Set to deprecate the function.",
+      type: "string",
+    },
+  }}
+/>
+
+## `FunctionParameter`
+
+<TypeTable
+  type={{
+    name: { description: "Parameter name.", type: "string" },
+    type: { description: "Any `TfType` — same types used in schema attributes.", type: "TfType" },
+    description: { description: "Parameter description.", type: "string" },
+    allowNullValue: {
+      description: "If false (default), Terraform errors when the caller passes null.",
+      type: "boolean",
+      default: "false",
+    },
+    allowUnknownValues: {
+      description: "If false (default), Terraform skips the call when any arg is unknown.",
+      type: "boolean",
+      default: "false",
+    },
+  }}
+/>
+
+## Variadic functions
+
+Declare a `variadicParameter` to accept a variable number of trailing arguments –
+
+```typescript
+export class ConcatFunction implements TerrablyFunction {
+  getName() { return "concat"; }
+
+  getSignature(): FunctionSignature {
+    return {
+      parameters: [
+        { name: "separator", type: types.string() },
+      ],
+      variadicParameter: { name: "values", type: types.string() },
+      returnType: { type: types.string() },
+      summary: "Join strings with a separator",
+    };
+  }
+
+  call(_ctx: FunctionCallContext, args: unknown[]): unknown {
+    const [separator, ...values] = args as string[];
+    return values.join(separator);
+  }
+}
+```
+
+```hcl
+output "joined" {
+  value = provider::mycloud::concat(", ", "apple", "banana", "cherry")
+  # → "apple, banana, cherry"
+}
+```
+
+## Error handling
+
+<Tabs groupId="fn-error" items={["Via diagnostics", "Via exception"]}>
+<Tab value="Via diagnostics">
+
+Report errors via `ctx.diagnostics`. Terraform aborts plan/apply and displays the error alongside the output:
+
+```typescript
+call(ctx: FunctionCallContext, args: unknown[]): unknown {
+  const n = args[0] as number;
+  if (n < 0) {
+    ctx.diagnostics.addError(
+      "Invalid argument",
+      `Expected a non-negative number, got ${n}.`,
+    );
+    return 0; // return a safe default; Terraform discards it on error
+  }
+  return Math.sqrt(n);
+}
+```
+
+</Tab>
+<Tab value="Via exception">
+
+Throwing a JavaScript exception also surfaces as a `FunctionError` to Terraform:
+
+```typescript
+call(_ctx: FunctionCallContext, args: unknown[]): unknown {
+  const n = args[0] as number;
+  if (n < 0) throw new Error(`Expected non-negative, got ${n}`);
+  return Math.sqrt(n);
+}
+```
+
+Prefer `ctx.diagnostics` for user-facing validation errors — they produce cleaner Terraform output.
+
+</Tab>
+</Tabs>

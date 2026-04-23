@@ -1,0 +1,119 @@
+---
+title: Testing
+description: Unit testing resource logic with node:test, and running the full end-to-end suite against a real Terraform binary.
+---
+
+## Unit testing
+
+Resource lifecycle methods (`create`, `read`, `update`, `delete`) are plain async functions. Test them directly — no gRPC server needed.
+
+```typescript title="tests/server.test.ts"
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { MyCloudServer } from "../src/resources/server.js";
+import { Diagnostics } from "terrably";
+import type { CreateContext, ReadContext } from "terrably";
+
+// Minimal mock provider
+const mockProvider = { apiBase: "https://api.mycloud.example" } as any;
+
+test("create returns state with id", async () => {
+  const resource = new MyCloudServer(mockProvider);
+  const ctx: CreateContext = {
+    diagnostics: new Diagnostics(),
+    typeName: "mycloud_server",
+  };
+
+  const result = await resource.create(ctx, { name: "test", region: "us-east-1" });
+
+  assert.ok(result["id"], "should have an id");
+  assert.equal(result["name"], "test");
+  assert.ok(!ctx.diagnostics.hasErrors());
+});
+
+test("read returns null for 404", async () => {
+  const resource = new MyCloudServer(mockProvider);
+  const ctx: ReadContext = {
+    diagnostics: new Diagnostics(),
+    typeName: "mycloud_server",
+  };
+
+  const result = await resource.read(ctx, { id: "nonexistent-id" });
+
+  assert.strictEqual(result, null);
+});
+```
+
+### Running tests
+
+```bash
+# Build first so TypeScript compiles
+pnpm exec tsc
+
+node --test dist/tests/*.test.js
+```
+
+Or via the package script –
+
+```bash
+pnpm run test
+```
+
+### Testing with a real local API
+
+Start your API server before running tests –
+
+```bash
+node dist/api-server/index.js &
+API_PID=$!
+
+node --test dist/tests/server.test.js
+
+kill $API_PID
+```
+
+---
+
+## End-to-end tests
+
+The E2E tests use the built-in `node:test` runner. Two suites run against a real Terraform binary –
+
+| Suite | Provider mode | Binary |
+|---|---|---|
+| `provider: dev mode` | `tsx` + [`TF_REATTACH_PROVIDERS`](https://developer.hashicorp.com/terraform/plugin/debugging#running-terraform-with-a-provider-in-debug-mode) | TypeScript source |
+| `provider: Node SEA binary` | standalone binary | `bin/` |
+
+<Callout type="warn">
+The SEA suite requires the provider binary to be built first (`pnpm run build`). It also requires `terraform` to be on your `PATH`.
+</Callout>
+
+### Prerequisites
+
+<Steps>
+<Step>
+
+### Build the reference provider
+
+```bash
+# From the monorepo root
+cd packages/sdk && pnpm exec tsc
+cd packages/reference-provider && pnpm exec tsc && pnpm run build:binary
+```
+
+</Step>
+<Step>
+
+### Confirm Terraform is available
+
+```bash
+terraform version
+```
+
+</Step>
+</Steps>
+
+### Run the end-to-end tests
+
+```bash
+pnpm run test
+```

@@ -1,0 +1,110 @@
+---
+title: Debugging & troubleshooting
+description: Attach a Node.js debugger, read structured provider logs, and fix common issues.
+---
+
+## Attaching a Node.js debugger
+
+Start the provider with `--inspect-brk` to pause execution until a debugger connects –
+
+```bash
+TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 \
+TF_PLUGIN_DEBUG=1 \
+  node --inspect-brk dist/src/main.js
+```
+
+Then attach:
+
+<Tabs groupId="debugger" items={["VS Code", "Chrome DevTools"]}>
+<Tab value="VS Code">
+
+Add a launch config –
+
+```json title=".vscode/launch.json"
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to Provider",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ]
+}
+```
+
+Hit **F5** → "Attach to Provider". The process resumes and pauses at your breakpoints.
+
+</Tab>
+<Tab value="Chrome DevTools">
+
+Open `chrome://inspect` → **Open dedicated DevTools for Node** → the provider appears under "Remote Target".
+
+</Tab>
+</Tabs>
+
+---
+
+## Reading provider logs
+
+terrably emits structured JSON logs to `stderr` in the [go-hclog](https://github.com/hashicorp/go-hclog) format that Terraform parses and re-emits. See the [Terraform debugging docs](https://developer.hashicorp.com/terraform/internals/debugging) for the full list of `TF_LOG` levels and options.
+
+```bash
+# All levels — Terraform core + provider
+TF_LOG=DEBUG terraform apply
+
+# Provider-only logs (suppresses Terraform core noise)
+TF_LOG_PROVIDER=DEBUG terraform apply
+
+# Write to a file
+TF_LOG=DEBUG TF_LOG_PATH=./tf.log terraform apply
+```
+
+Filter provider logs from a mixed stream:
+
+```bash
+TF_LOG=TRACE terraform apply 2>&1 | grep '"@module":"provider'
+```
+
+See [Structured logging](/docs/reference/logging) for how to emit logs from your own code.
+
+---
+
+## Common issues
+
+### "This binary is a Terraform provider plugin"
+
+The magic cookie is missing. Set it before running the provider manually:
+
+```bash
+export TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2
+```
+
+Terraform sets this automatically when it spawns the provider. You only need it when starting the provider manually in dev mode.
+
+### "The provider does not support resource type X"
+
+The Terraform type is `{getModelPrefix()}_{resource.getName()}`. Verify –
+
+- `getModelPrefix()` returns `"mycloud"` (no trailing underscore)
+- `getName()` returns `"server"` (no prefix, no underscores)
+- Combined: `"mycloud_server"` matches exactly what you wrote in `main.tf`
+
+### proto files not found at runtime
+
+The SDK loads `tfplugin6.proto` at runtime from the `proto/` directory. If you have a custom build pipeline and copied `dist/` without `proto/`, they need to travel together — `proto/` must be two levels above `dist/src/serve.js`.
+
+With `terrably build` (the standard path) this is handled automatically — the proto files are embedded as SEA assets.
+
+### "transport: Error while dialing"
+
+The Unix socket path changed between runs. This happens when you restart the provider in dev mode without updating `TF_REATTACH_PROVIDERS`. Copy the new export command from the provider's stdout each time.
+
+### Terraform state becomes inconsistent after a schema change
+
+If you rename or remove attributes without implementing `upgrade()`, Terraform may fail to read old state. Options:
+
+- Increment `version` in your `Schema` constructor and implement `Resource.upgrade()` — see [Schema migration](/docs/distribution/schema-migration) for patterns.
+- Run `terraform state rm <resource>` to drop the old state and re-create the resource.

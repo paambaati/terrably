@@ -1,0 +1,138 @@
+---
+title: Provider
+description: The Provider interface — how terrably connects your TypeScript class to Terraform's plugin protocol.
+---
+
+## The `Provider` interface
+
+```typescript
+interface Provider {
+  // Terraform registry identifier, e.g. "registry.terraform.io/myorg/mycloud"
+  getFullName(): string;
+
+  // Prefix for all resource/datasource type names, e.g. "mycloud"
+  // Resource named "server" → Terraform type "mycloud_server"
+  getModelPrefix(): string;
+
+  // Return the schema for the provider-level configuration block
+  getProviderSchema(diags: Diagnostics): Schema;
+
+  // Optional: validate provider config before configure() is called
+  validateConfig(diags: Diagnostics, config: State): void;
+
+  // Called once with the resolved provider config; store credentials here
+  configure(diags: Diagnostics, config: State): void | Promise<void>;
+
+  // Return the list of resource classes this provider manages
+  getResources(): ResourceClass[];
+
+  // Return the list of data source classes
+  getDataSources(): DataSourceClass[];
+
+  // Optional: return provider-defined functions
+  getFunctions?(): FunctionClass[];
+
+  // Factory methods — typically just `new cls(this)`
+  newResource(cls: ResourceClass): Resource;
+  newDataSource(cls: DataSourceClass): DataSource;
+}
+```
+
+### Full example
+
+```typescript title="src/provider.ts"
+import { types, Attribute, Schema, Diagnostics, createLogger } from "terrably";
+import type {
+  Provider, Resource, DataSource,
+  ResourceClass, DataSourceClass, State,
+} from "terrably";
+import { MyCloudServer } from "./resources/server.js";
+import { RegionsDataSource } from "./data-sources/regions.js";
+
+const log = createLogger("provider");
+
+export class MyCloudProvider implements Provider {
+  apiBase = "https://api.mycloud.example";
+  private token = "";
+
+  getFullName()    { return "registry.terraform.io/myorg/mycloud"; }
+  getModelPrefix() { return "mycloud"; }
+
+  getProviderSchema(_diags: Diagnostics): Schema {
+    return new Schema([
+      new Attribute("api_url", types.string(), {
+        optional: true,
+        description: "Base URL for the MyCloud API. Defaults to `https://api.mycloud.example`.",
+      }),
+      new Attribute("token", types.string(), {
+        optional: true,
+        sensitive: true,
+        description: "API token. May also be set via the `MYCLOUD_TOKEN` environment variable.",
+      }),
+    ]);
+  }
+
+  validateConfig(diags: Diagnostics, config: State): void {
+    const token = (config["token"] as string | null) ?? process.env["MYCLOUD_TOKEN"];
+    if (!token) {
+      diags.addError(
+        "Missing authentication token",
+        'Set the `token` attribute or the `MYCLOUD_TOKEN` environment variable.',
+        ["token"],
+      );
+    }
+  }
+
+  configure(_diags: Diagnostics, config: State): void {
+    if (typeof config["api_url"] === "string") this.apiBase = config["api_url"];
+    this.token = (config["token"] as string | null) ?? process.env["MYCLOUD_TOKEN"] ?? "";
+    log.info("provider configured", { endpoint: this.apiBase });
+  }
+
+  getResources():   ResourceClass[]   { return [MyCloudServer]; }
+  getDataSources(): DataSourceClass[] { return [RegionsDataSource]; }
+  newResource(cls:   ResourceClass):   Resource   { return new cls(this); }
+  newDataSource(cls: DataSourceClass): DataSource { return new cls(this); }
+}
+```
+
+## Type naming
+
+The Terraform type for a resource is `{getModelPrefix()}_{resource.getName()}` –
+
+| `getModelPrefix()` | `getName()` | Terraform type |
+|---|---|---|
+| `"mycloud"` | `"server"` | `mycloud_server` |
+| `"mycloud"` | `"database"` | `mycloud_database` |
+| `"mycloud"` | `"regions"` (data source) | `data.mycloud_regions` |
+
+<Callout type="warn">
+`getModelPrefix()` must return the prefix **without** a trailing underscore. terrably adds it automatically.
+</Callout>
+
+## `configure()` lifecycle
+
+Terraform calls `configure()` once per run, after validating the provider block. This is the right place to:
+
+- Store API credentials and base URL on the provider instance
+- Initialise an HTTP client
+- Set up any shared state resources will use
+
+Resources receive a reference to the provider via their constructor (`new cls(this)`), so any fields stored in `configure()` are accessible to all resources.
+
+## `validateConfig()` vs provider-level error handling
+
+`validateConfig()` runs **before** `configure()` and receives the raw config. Return early-validation errors here. If `validateConfig()` adds an error, `configure()` is not called.
+
+```typescript
+validateConfig(diags: Diagnostics, config: State): void {
+  const token = config["token"] as string | null;
+  if (!token && !process.env["MYCLOUD_TOKEN"]) {
+    diags.addError(
+      "Missing required token",
+      'Set `token` in the provider block or export MYCLOUD_TOKEN.',
+      ["token"],
+    );
+  }
+}
+```

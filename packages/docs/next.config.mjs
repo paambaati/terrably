@@ -17,6 +17,7 @@ const config = {
     // Required for `output: 'export'` — Next.js image optimisation needs a server.
     unoptimized: true,
   },
+  serverExternalPackages: ['typescript', 'twoslash'],
 };
 
 const withMDX = createMDX();

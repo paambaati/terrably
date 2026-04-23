@@ -1,0 +1,176 @@
+---
+title: Schema migration
+description: Increment schema version, implement upgrade() to migrate stored state, and common patterns for renaming, splitting, and removing attributes.
+---
+
+## When to bump schema version
+
+Every resource's `Schema` carries an integer `version` (default `0`). Terraform compares the version stored in state against the current one. If they differ, it calls `Resource.upgrade()` once for each intervening version. ([Terraform state upgrade docs](https://developer.hashicorp.com/terraform/plugin/framework/resources/state-upgrade))
+
+**Bump the version whenever the shape of stored state changes –**
+
+| Change | Bump? |
+|---|---|
+| Rename an attribute | Yes |
+| Remove an attribute | Yes |
+| Change an attribute's type | Yes |
+| Add a new attribute (`optional: true, computed: true`) | No — see [Adding new attributes](#adding-new-optional-attributes) |
+| Bug fix, description change | No |
+
+---
+
+## Implementing `upgrade()`
+
+```typescript title="src/resources/server.ts"
+// Before (v0)
+getSchema(): Schema {
+  return new Schema([
+    new Attribute("id",     types.string(), { computed: true }),
+    new Attribute("zone",   types.string(), { required: true }), // ← will be renamed
+  ], [], 0);
+}
+
+// After (v1) — "zone" renamed to "availability_zone"
+getSchema(): Schema {
+  return new Schema([
+    new Attribute("id",                 types.string(), { computed: true }),
+    new Attribute("availability_zone",  types.string(), { required: true }),
+  ], [], 1); // ← bump to 1
+}
+
+upgrade(ctx: UpgradeContext, version: number, old: State): State {
+  switch (version) {
+    case 0: {
+      // v0 → v1: rename "zone" to "availability_zone"
+      const { zone, ...rest } = old;
+      return { ...rest, availability_zone: zone };
+    }
+    default:
+      ctx.diagnostics.addError(
+        "Unknown schema version",
+        `Cannot upgrade state from version ${version}.`,
+      );
+      return old;
+  }
+}
+```
+
+### Chaining multiple upgrades
+
+When shipping a second breaking change after `v1`, add a new `case` and bump to `v2`. Terraform calls `upgrade()` once per stored version, chaining through each case in sequence.
+
+```typescript
+upgrade(ctx: UpgradeContext, version: number, old: State): State {
+  switch (version) {
+    case 0: {
+      // v0 → v1: rename "zone" → "availability_zone"
+      const { zone, ...rest } = old;
+      // Recursively process the next version
+      return this.upgrade(ctx, 1, { ...rest, availability_zone: zone });
+    }
+    case 1: {
+      // v1 → v2: split "size_gb" into "disk_size_gb" + "disk_type"
+      const { size_gb, ...rest } = old;
+      return { ...rest, disk_size_gb: size_gb, disk_type: "ssd" };
+    }
+    default:
+      ctx.diagnostics.addError("Unknown schema version", `Cannot upgrade from v${version}.`);
+      return old;
+  }
+}
+```
+
+---
+
+## Common migration patterns
+
+<Tabs groupId="migration" items={["Rename", "Remove", "Type change", "Split", "Add new"]}>
+<Tab value="Rename">
+
+```typescript
+case 0: {
+  const { old_name, ...rest } = old;
+  return { ...rest, new_name: old_name };
+}
+```
+
+</Tab>
+<Tab value="Remove">
+
+```typescript
+case 0: {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { deprecated_field, ...rest } = old;
+  return rest;
+}
+```
+
+</Tab>
+<Tab value="Type change">
+
+```typescript
+// string → number
+case 0: {
+  return {
+    ...old,
+    port: Number(old["port"] as string),
+  };
+}
+```
+
+</Tab>
+<Tab value="Split">
+
+```typescript
+// Split one attribute into two
+case 0: {
+  const { endpoint, ...rest } = old;
+  const url = new URL(endpoint as string);
+  return {
+    ...rest,
+    host: url.hostname,
+    port: Number(url.port) || 443,
+  };
+}
+```
+
+</Tab>
+<Tab value="Add new">
+
+Adding a new attribute **does not require a version bump** if you declare it as `optional: true, computed: true` with a sensible default. Existing state objects read back `null`; your `read()` backfills the value from the live API on the next refresh.
+
+```typescript
+// NEW attribute — existing state is valid because it's optional+computed
+new Attribute("disk_type", types.string(), {
+  optional: true,
+  computed: true,
+  default: "ssd",
+})
+```
+
+```typescript
+read(ctx: ReadContext, current: State): State {
+  const live = await this.api.getServer(current["id"] as string);
+  return {
+    ...current,
+    ...live,
+    // Backfill on first read of a resource created before this attribute existed
+    disk_type: live.diskType ?? current["disk_type"] ?? "ssd",
+  };
+}
+```
+
+</Tab>
+</Tabs>
+
+---
+
+## Semantic versioning
+
+Follow [Semantic Versioning](https://semver.org/) with a `v` prefix (`v1.0.0`).
+
+| Change | Bump |
+|---|---|
+| Breaking schema change (removed/renamed attribute, type change) | `MAJOR` |
+| New resource, data source, or attribute | `MINOR` |
+| Bug fix, performance improvement | `PATCH` |

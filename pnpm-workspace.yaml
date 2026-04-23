@@ -4,6 +4,7 @@ packages:
 
 ignoredBuiltDependencies:
   - protobufjs
+  - unrs-resolver
 
 onlyBuiltDependencies:
   - grpc-tools

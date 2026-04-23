@@ -1,0 +1,140 @@
+---
+title: State & Diagnostics
+description: State, the Unknown sentinel, and Diagnostics — the data types that flow through every resource lifecycle method.
+---
+
+## State
+
+```typescript
+type State = Record<string, unknown>;
+```
+
+State is a plain JavaScript object whose keys match attribute names in your schema. Values are decoded from Terraform's msgpack wire format before reaching your code, and re-encoded after you return.
+
+| Terraform type | JavaScript value |
+|---|---|
+| `string` | `string` |
+| `number` | `number` |
+| `bool` | `boolean` |
+| `list(T)` | `T[]` |
+| `set(T)` | `T[]` |
+| `map(T)` | `Record<string, T>` |
+| not-yet-known | `Unknown` singleton |
+| null / absent | `null` |
+
+State flows through lifecycle methods as plain object literals. You can spread, destructure, and return new objects freely –
+
+```typescript
+async update(ctx: UpdateContext, prior: State, planned: State): Promise<State> {
+  const server = await this.api.update(prior["id"] as string, {
+    name: planned["name"] as string,
+  });
+  // Merge live API response over the planned state
+  return { ...planned, ...server };
+}
+```
+
+---
+
+## Unknown
+
+```typescript
+import { Unknown } from "terrably";
+```
+
+`Unknown` is a singleton representing a Terraform value not yet known at plan time — displayed as `(known after apply)` in plan output.
+
+The framework automatically sets computed attributes to `Unknown` during planning. You can also set them explicitly in `plan()` –
+
+```typescript
+plan(_ctx: PlanContext, _prior: State | null, planned: State): State {
+  return {
+    ...planned,
+    // ip_address will be set by the API on create
+    ip_address: Unknown,
+    id: planned["id"] ?? Unknown,
+  };
+}
+```
+
+To check whether a value is unknown –
+
+```typescript
+import { Unknown } from "terrably";
+
+if (value === Unknown) {
+  // value is not yet known
+}
+```
+
+---
+
+## Diagnostics
+
+```typescript
+class Diagnostics {
+  addError(summary: string, detail?: string, path?: string[]): this;
+  addWarning(summary: string, detail?: string, path?: string[]): this;
+  hasErrors(): boolean;
+  readonly items: DiagnosticItem[];
+}
+```
+
+<TypeTable
+  type={{
+    summary: {
+      description: "Short error title shown in Terraform output. Required.",
+      type: "string",
+    },
+    detail: {
+      description: "Longer explanation. Shown below the summary.",
+      type: "string",
+    },
+    path: {
+      description: "Optional attribute path pointing to the problematic field, e.g. `[\"network_interface\", \"ip_address\"]`. Terraform highlights the attribute in plan output.",
+      type: "string[]",
+    },
+  }}
+/>
+
+### Errors vs warnings
+
+- **Errors**: Terraform aborts the current operation and displays the error. Any errors returned from `create` leave the resource in a tainted state.
+- **Warnings**: Terraform shows them but continues.
+
+### Pattern — validate config
+
+```typescript
+validateConfig(diags: Diagnostics, config: State): void {
+  if (!config["token"] && !process.env["MYCLOUD_TOKEN"]) {
+    diags.addError(
+      "Missing required token",
+      'Set the `token` attribute or export MYCLOUD_TOKEN.',
+      ["token"],
+    );
+  }
+  const url = config["api_url"] as string | null;
+  if (url && !url.startsWith("https://")) {
+    diags.addWarning(
+      "Insecure API URL",
+      "The api_url does not use HTTPS. Credentials will be sent in cleartext.",
+      ["api_url"],
+    );
+  }
+}
+```
+
+### Pattern — validate resource config
+
+```typescript
+validate(diags: Diagnostics, _typeName: string, config: State): void {
+  const size = config["disk_size_gb"] as number;
+  if (size < 10 || size > 16384) {
+    diags.addError(
+      "Invalid disk size",
+      `disk_size_gb must be between 10 and 16384, got ${size}.`,
+      ["disk_size_gb"],
+    );
+  }
+}
+```

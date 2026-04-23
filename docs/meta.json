@@ -1,4 +1,11 @@
 {
   "title": "terrably",
-  "pages": [ "index", "api-reference", "distribution", "local-testing" ]
+  "pages": [
+    "index",
+    "getting-started",
+    "concepts",
+    "development",
+    "reference",
+    "distribution"
+  ]
 }
