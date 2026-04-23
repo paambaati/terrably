@@ -28,7 +28,7 @@ pnpm run build
 Terraform invokes providers as OS processes. Build a self-contained SEA binary –
 
 ```bash
-# Requires Node.js >= 22
+# Requires Node.js >= 25.5.0
 pnpm run build:sea
 ```
 

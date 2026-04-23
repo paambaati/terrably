@@ -30,7 +30,7 @@ Operators who consume your provider should not need Node.js installed. A **Node.
 
 | Tool | Version | Notes |
 |---|---|---|
-| Node.js | ≥ 22 | Required for stable `--build-sea` support |
+| Node.js | ≥ 25.5.0 | Required for stable `--build-sea` support |
 | terrably CLI | any | `npm i -g terrably` |
 | GPG | any | To sign the release for the Terraform Registry |
 | GitHub CLI (`gh`) | optional | Alternative to `--github-release` flag |
@@ -196,7 +196,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '25'
           cache: 'npm'
 
       - name: Install dependencies
@@ -234,7 +234,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '25'
           cache: 'npm'
 
       - name: Install dependencies
