@@ -2,4 +2,4 @@
 2:I[86265,["/terrably/_next/static/chunks/0e__ujv__uucr.js","/terrably/_next/static/chunks/0bxmyxyayvsp3.js"],"default"]
 3:I[93280,["/terrably/_next/static/chunks/0e__ujv__uucr.js","/terrably/_next/static/chunks/0bxmyxyayvsp3.js"],"default"]
 4:[]
-0:{"rsc":["$","$1","c",{"children":[null,["$","$L2",null,{"parallelRouterKey":"children","template":["$","$L3",null,{}]}]]}],"isPartial":false,"staleTime":300,"varyParams":"$W4","buildId":"cK3zcjqq8WXwB9QLzIcQQ"}
+0:{"rsc":["$","$1","c",{"children":[null,["$","$L2",null,{"parallelRouterKey":"children","template":["$","$L3",null,{}]}]]}],"isPartial":false,"staleTime":300,"varyParams":"$W4","buildId":"6y5K8YEdEon5ATU5IE-rH"}
