@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.8](https://github.com/paambaati/terrably/compare/v0.0.7...v0.0.8) (2026-04-24)
+
+
+### Features
+
+* catch native/unbundle-able dependencies upfront ([34cdbac](https://github.com/paambaati/terrably/commit/34cdbacadb7b600e6c46acae25cc52bf3746c48a))
+
+
+### Bug Fixes
+
+* make sure outfile and project path is flexible and read from tsconfig ([34cdbac](https://github.com/paambaati/terrably/commit/34cdbacadb7b600e6c46acae25cc52bf3746c48a))
+
 ## [0.0.7](https://github.com/paambaati/terrably/compare/v0.0.6...v0.0.7) (2026-04-24)
 
 

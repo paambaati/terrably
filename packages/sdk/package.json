@@ -1,6 +1,6 @@
 {
   "name": "terrably",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "TypeScript-native Terraform provider authoring framework",
   "homepage": "https://paambaati.github.io/terrably/",
   "author": {
