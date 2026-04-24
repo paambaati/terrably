@@ -72,7 +72,7 @@ jobs:
 
   integration-test:
     name: Integration test
-    needs: [release, publish]
+    needs: [publish]
     runs-on: ubuntu-slim
     steps:
       - name: Dispatch e2e workflow on paambaati/terraform-provider-gpcloud
