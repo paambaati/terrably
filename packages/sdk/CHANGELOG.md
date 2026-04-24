@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.6](https://github.com/paambaati/terrably/compare/v0.0.5...v0.0.6) (2026-04-24)
+
+
+### Features
+
+* **test:** full end-to-end testing with toy provider ([5011f06](https://github.com/paambaati/terrably/commit/5011f0613c1f70743263701bfc0d9784535e3ca3))
+
 ## [0.0.5](https://github.com/paambaati/terrably/compare/v0.0.4...v0.0.5) (2026-04-23)
 
 
