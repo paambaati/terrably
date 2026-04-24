@@ -77,24 +77,12 @@ jobs:
     runs-on: ubuntu-slim
     steps:
       - name: Dispatch e2e workflow on paambaati/terraform-provider-gpcloud
-        uses: actions/github-script@v9
         env:
-          TERRABLY_VERSION: ${{ needs.release.outputs.tag_name }}
-        with:
           # This token has `actions: write` permission on paambaati/terraform-provider-gpcloud.
-          github-token: ${{ secrets.WORKFLOW_DISPATCH_TOKEN }}
-          script: |
-            const terrablyVersion = process.env.TERRABLY_VERSION;
-            if (!terrablyVersion) {
-              core.setFailed('TERRABLY_VERSION is empty — release job did not produce a tag_name.');
-              return;
-            }
-            await github.rest.actions.createWorkflowDispatch({
-              owner: 'paambaati',
-              repo: 'terraform-provider-gpcloud',
-              workflow_id: 'e2e-terrably-upgrade.yml',
-              ref: 'main',
-              inputs: {
-                terrably_version: terrablyVersion,
-              },
-            });
+          GH_TOKEN: ${{ secrets.WORKFLOW_DISPATCH_TOKEN }}
+          TERRABLY_VERSION: ${{ needs.release.outputs.tag_name }}
+        run: |
+          gh workflow run e2e-terrably-upgrade.yml \
+            --repo paambaati/terraform-provider-gpcloud \
+            --ref main \
+            --field terrably_version="${TERRABLY_VERSION}"
