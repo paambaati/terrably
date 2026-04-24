@@ -69,3 +69,24 @@ jobs:
       - name: Publish to npm
         run: pnpm publish --access public --no-git-checks
         working-directory: packages/sdk
+
+  integration-test:
+    name: Integration test
+    needs: [release, publish]
+    runs-on: ubuntu-slim
+    steps:
+      - name: Dispatch e2e workflow on paambaati/terraform-provider-gpcloud
+        uses: actions/github-script@v7
+        with:
+          # This token has `repo` + `workflow` scopes on paambaati/terraform-provider-gpcloud.
+          github-token: ${{ secrets.WORKFLOW_DISPATCH_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'paambaati',
+              repo: 'terraform-provider-gpcloud',
+              workflow_id: 'e2e-terrably-upgrade.yml',
+              ref: 'main',
+              inputs: {
+                terrably_version: '${{ needs.release.outputs.tag_name }}',
+              },
+            });
