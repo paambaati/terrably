@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.7](https://github.com/paambaati/terrably/compare/v0.0.6...v0.0.7) (2026-04-24)
+
+
+### Bug Fixes
+
+* **test:** make sure end-to-end testing with toy provider works ([7bce42a](https://github.com/paambaati/terrably/commit/7bce42a03753e07a1c7075a98d535d5e21626d9e))
+
 ## [0.0.6](https://github.com/paambaati/terrably/compare/v0.0.5...v0.0.6) (2026-04-24)
 
 
