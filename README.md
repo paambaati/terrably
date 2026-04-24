@@ -1,5 +1,7 @@
 # terrably
 
+[![Tests](https://github.com/paambaati/terraform-provider-gpcloud/actions/workflows/e2e-terrably-upgrade.yml/badge.svg)](https://github.com/paambaati/terraform-provider-gpcloud/actions/workflows/e2e-terrably-upgrade.yml)
+
 Build Terraform & OpenTofu providers in TypeScript.
 
 **[Read full documentation →](https://paambaati.github.io/terrably/)**
@@ -39,16 +41,3 @@ terrably build                         Compile + bundle + produce a shippable bi
 terrably check                         Run correctness checks against the provider
 terrably publish                       Package, sign, and upload a release
 ```
-
----
-
-## Documentation
-
-| Guide | |
-|---|---|
-| [Getting started](https://paambaati.github.io/terrably/docs/getting-started) | Scaffold your first provider in 10 minutes |
-| [Core concepts](https://paambaati.github.io/terrably/docs/concepts/schema) | Types, schema, resource lifecycle, provider-defined functions |
-| [Local testing](https://paambaati.github.io/terrably/docs/development/local-testing) | dev_overrides, dev mode, unit tests, debugger |
-| [Distribution](https://paambaati.github.io/terrably/docs/distribution) | Multi-platform CI, GPG signing, Terraform Registry |
-| [API reference](https://paambaati.github.io/terrably/docs/reference/state) | State, Diagnostics, serve(), structured logging |
-
