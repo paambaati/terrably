@@ -1,4 +1,4 @@
 {
   "title": "Development",
-  "pages": ["local-testing", "testing", "debugging"]
+  "pages": ["local-testing", "testing", "debugging", "native-addons"]
 }

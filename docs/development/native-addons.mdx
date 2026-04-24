@@ -1,0 +1,107 @@
+---
+title: Native addons
+description: Why packages with compiled .node files cannot be used in terrably providers, and what to use instead.
+---
+
+## The constraint
+
+terrably builds providers as [Node.js Single Executable Applications (SEA)](https://nodejs.org/api/single-executable-applications.html). A SEA is a self-contained binary — your provider's JavaScript and its dependencies are bundled by esbuild and injected into a Node.js executable at compile time.
+
+Native addons (`.node` files) are compiled C/C++ shared libraries. They **cannot** be embedded into a SEA binary because –
+
+1. They are platform-specific ELF/Mach-O/PE shared objects, not JavaScript.
+2. Node.js loads them via `dlopen` at runtime from a filesystem path. That path points inside `node_modules`, which does not exist on the end user's machine.
+3. esbuild marks all `*.node` imports as external and leaves the original filesystem path in the bundle. The binary builds successfully, but crashes with `MODULE_NOT_FOUND` the first time Terraform invokes it.
+
+terrably catches this **before the compile step** by scanning `node_modules` for `.node` files. If any are found, the build fails immediately with a list of the offending packages –
+
+```
+✗ Native addons are not supported in terrably builds.
+  The following imports cannot be bundled into a Node.js Single Executable Application –
+    • argon2
+    • @napi-rs/canvas
+
+  To fix this, replace each native dependency with a pure-JS alternative.
+  Alternatively, check `pnpm why <package>\ to find what pulls them in.
+```
+
+## Well-known packages that will fail
+
+### Cryptography
+
+| Package | What it does | Pure-JS alternative |
+|---|---|---|
+| [`argon2`](https://www.npmjs.com/package/argon2) | Argon2 password hashing | [`argon2-wasm-pro`](https://www.npmjs.com/package/argon2-wasm-pro), [`hash-wasm`](https://www.npmjs.com/package/hash-wasm) |
+| [`bcrypt`](https://www.npmjs.com/package/bcrypt) | bcrypt password hashing | [`bcryptjs`](https://www.npmjs.com/package/bcryptjs) (drop-in) |
+| [`sodium-native`](https://www.npmjs.com/package/sodium-native) | libsodium bindings | [`libsodium-wrappers`](https://www.npmjs.com/package/libsodium-wrappers) |
+
+### Databases and storage
+
+| Package | What it does | Pure-JS alternative |
+|---|---|---|
+| [`better-sqlite3`](https://www.npmjs.com/package/better-sqlite3) | SQLite driver | [`sql.js`](https://www.npmjs.com/package/sql.js) (WASM), or avoid local DB entirely |
+| [`sqlite3`](https://www.npmjs.com/package/sqlite3) | SQLite driver | Same as above |
+| [`leveldown`](https://www.npmjs.com/package/leveldown) | LevelDB bindings | [`level`](https://www.npmjs.com/package/level) with `memory-level` backend |
+| [`lmdb`](https://www.npmjs.com/package/lmdb) | LMDB bindings | No direct equivalent; use a pure-JS in-memory store |
+
+### Serialization and parsing
+
+| Package | What it does | Pure-JS alternative |
+|---|---|---|
+| [`protobufjs`](https://www.npmjs.com/package/protobufjs) with native acceleration | Protocol Buffers | Use `protobufjs` without the optional `@protobufjs/aspromise` native path — the pure-JS fallback is automatic |
+| [`@grpc/grpc-js`](https://www.npmjs.com/package/@grpc/grpc-js) | gRPC (used internally by terrably) | Already bundled by terrably — do not add it as a direct dependency |
+
+### Compression
+
+| Package | What it does | Pure-JS alternative |
+|---|---|---|
+| [`zstd`](https://www.npmjs.com/package/zstd) / [`node-zstd`](https://www.npmjs.com/package/node-zstd) | Zstandard compression | [`fzstd`](https://www.npmjs.com/package/fzstd) (WASM) |
+| [`lz4`](https://www.npmjs.com/package/lz4) | LZ4 compression | [`lz4js`](https://www.npmjs.com/package/lz4js) |
+
+### Miscellaneous
+
+| Package | What it does | Pure-JS alternative |
+|---|---|---|
+| [`fsevents`](https://www.npmjs.com/package/fsevents) | macOS file-system events (optional dep of many watchers) | Usually an optional peer dep — it won't appear unless you install a watcher package, which you shouldn't need in a provider |
+| [`cpu-features`](https://www.npmjs.com/package/cpu-features) | CPU feature detection | Use `os.cpus()` or hard-code the target architecture |
+| [`re2`](https://www.npmjs.com/package/re2) | Google RE2 regex engine | Built-in `RegExp` (V8 regex, linear-time not guaranteed but sufficient for provider logic) |
+
+---
+
+## Spawned native executables
+
+A handful of popular packages ship a **platform binary** that is extracted from `node_modules` and invoked via `child_process.spawn` — not a `.node` addon at all. terrably cannot detect these at build time.
+
+Well-known examples –
+
+| Package | Spawned binary | Notes |
+|---|---|---|
+| [`esbuild`](https://www.npmjs.com/package/esbuild) | `esbuild` / `esbuild.exe` | Used for build tooling only — should never be a runtime dependency of your provider |
+| [`@tailwindcss/oxide`](https://www.npmjs.com/package/@tailwindcss/oxide) | Rust-based CSS engine | Not applicable to provider logic |
+| [`puppeteer`](https://www.npmjs.com/package/puppeteer) | Chromium executable | Not applicable to provider logic |
+
+If you accidentally add one of these as a runtime dependency, your provider will build successfully but crash at runtime with a `spawn ENOENT` or similar error when the package tries to locate its binary. Check your dependency tree with –
+
+```sh
+pnpm why <suspect-package>
+```
+
+---
+
+## How to diagnose a transitive dependency
+
+If `terrably build` fails and you didn't intentionally add a native package, the addon is a transitive dependency of something you did add. Find the culprit –
+
+```sh
+# List all packages that depend on the named native package
+pnpm why <native-package-name>
+
+# Alternatively, trace from the .node file path in the error message
+# e.g. node_modules/argon2/build/Release/argon2.node → owner is "argon2"
+pnpm why argon2
+```
+
+Once you find the parent package, check whether it –
+1. Offers an optional native path with a pure-JS fallback (e.g. `protobufjs`) — in which case simply don't install the optional native accelerator.
+2. Exports a separate pure-JS package (e.g. `bcrypt` → `bcryptjs`).
+3. Has no alternative — in which case you'll need to restructure your provider logic to avoid that dependency entirely.
