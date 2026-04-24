@@ -32,6 +32,22 @@ export async function buildCommand(options: { name?: string; out?: string }): Pr
   const binaryName = `terraform-provider-${providerName}${process.platform === "win32" ? ".exe" : ""}`;
   const binaryPath = path.join(outDir, binaryName);
 
+  // ── Resolve tsconfig output directory ────────────────────────────────────
+  // Read tsconfig.json once here so all steps below use the same outDir/rootDir
+  // rather than hardcoding "dist/src" which is wrong when rootDir is set.
+  const tsconfigPath = path.join(providerRoot, "tsconfig.json");
+  let tscOutDir  = "dist";   // TypeScript default
+  let tscRootDir: string | undefined;
+  if (fs.existsSync(tsconfigPath)) {
+    const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, "utf8")) as {
+      compilerOptions?: { outDir?: string; rootDir?: string };
+    };
+    tscOutDir  = tsconfig.compilerOptions?.outDir  ?? "dist";
+    tscRootDir = tsconfig.compilerOptions?.rootDir;
+  }
+  // Intermediate terrably build artifacts live alongside tsc output.
+  const tscOutAbs = path.resolve(providerRoot, tscOutDir);
+
   // ── Node.js version check ─────────────────────────────────────────────────
   // --build-sea was added in Node.js 25.5.0 (https://nodejs.org/api/cli.html#build-seaconfig).
   // The older workflow (--experimental-sea-config + postject) works on older
@@ -56,25 +72,85 @@ export async function buildCommand(options: { name?: string; out?: string }): Pr
   process.stdout.write("▶ Compiling TypeScript...\n");
   const tscBin = path.join(providerRoot, "node_modules", ".bin", "tsc");
   const tscCmd = fs.existsSync(tscBin) ? `"${tscBin}"` : "pnpm exec tsc";
-  execSync(tscCmd, { cwd: providerRoot, stdio: "inherit" });
+  // Pass --noEmit false explicitly so that providers whose tsconfig.json has
+  // noEmit: true (e.g. when they rely on a separate bundler for their own
+  // tooling) still produce compiled output for the SEA build.
+  execSync(`${tscCmd} --noEmit false`, { cwd: providerRoot, stdio: "inherit" });
 
   // ── Step 2: esbuild bundle ────────────────────────────────────────────────
   process.stdout.write("▶ Bundling with esbuild...\n");
-  const bundleOut = path.join(providerRoot, "dist", "_sea_bundle.cjs");
-  await esbuild.build({
-    entryPoints: [path.join(providerRoot, "dist", "src", "main.js")],
+
+  // Derive the compiled entry point from the resolved tsconfig paths.
+  //   rootDir="src", outDir="dist"  →  dist/main.js       (terrably scaffold)
+  //   rootDir not set, outDir="dist" →  dist/src/main.js  (no rootDir set)
+  let compiledEntry: string;
+  if (tscRootDir) {
+    const relFromRoot = path.relative(tscRootDir, path.join("src", "main.ts"));
+    compiledEntry = path.join(tscOutAbs, relFromRoot.replace(/\.ts$/, ".js"));
+  } else {
+    compiledEntry = path.join(tscOutAbs, "src", "main.js");
+  }
+
+  if (!fs.existsSync(compiledEntry)) {
+    process.stderr.write(
+      `✗ Compiled entry point not found: ${compiledEntry}\n` +
+      `  Make sure "tsc" ran successfully and the output matches your tsconfig.json.\n`,
+    );
+    process.exit(1);
+  }
+
+  const bundleOut = path.join(tscOutAbs, "_sea_bundle.cjs");
+  const esbuildResult = await esbuild.build({
+    entryPoints: [compiledEntry],
     bundle:   true,
     platform: "node",
     format:   "cjs",
     outfile:  bundleOut,
     packages: "bundle",
     external: ["*.node"],
+    metafile: true,
   });
+
+  // ── Check for unbundleable externals ─────────────────────────────────────
+  // esbuild records every import it left unresolved in the metafile with
+  // external: true. Node.js built-in modules are legitimately external and
+  // work fine inside a SEA binary. Everything else that is external cannot be
+  // embedded and will cause a runtime crash on the end user's machine.
+  // builtinModules covers bare names ("fs") and node:-prefixed names
+  // ("node:fs") — both forms appear in the wild.
+  const { builtinModules } = await import("node:module");
+  const builtinSet = new Set([
+    ...builtinModules,
+    ...builtinModules.map((m) => `node:${m}`),
+  ]);
+
+  type ExternalRef = { external: string; importedFrom: string };
+  const externalRefs: ExternalRef[] = [];
+  for (const [inputFile, meta] of Object.entries(esbuildResult.metafile.inputs)) {
+    for (const imp of meta.imports) {
+      if (imp.external && !builtinSet.has(imp.path)) {
+        externalRefs.push({ external: imp.path, importedFrom: inputFile });
+      }
+    }
+  }
+  if (externalRefs.length > 0) {
+    const lines = [...new Set(externalRefs.map((r) => `    • ${r.external}  (imported by ${r.importedFrom})`))];
+    process.stderr.write(
+      `✗ Native addons are not supported in terrably builds.` +
+      `  The following imports cannot be bundled into a Node.js Single Executable Application –\n` +
+      lines.join("\n") + "\n" +
+      `\n` +
+      `  To fix this, replace each native dependency with a pure-JS alternative.\n` +
+      `  Alternatively, check \`pnpm why <package>\` to find what pulls them in.\n`,
+    );
+    process.exit(1);
+  }
 
   // ── Step 3: Generate SEA entry-point ──────────────────────────────────────
   process.stdout.write("▶ Generating SEA entry-point...\n");
   const bundleCode  = fs.readFileSync(bundleOut, "utf8");
-  const seaEntryPath = path.join(providerRoot, "dist", "_sea_entry.cjs");
+
+  const seaEntryPath = path.join(tscOutAbs, "_sea_entry.cjs");
   fs.writeFileSync(
     seaEntryPath,
     `"use strict";
@@ -100,7 +176,7 @@ ${bundleCode}
     "utf8",
   );
 
-  // ── Step 4: Write sea-config.json ─────────────────────────────────────────
+  // ── Step 5: Write sea-config.json ─────────────────────────────────────────
   process.stdout.write("▶ Writing sea-config.json...\n");
   fs.mkdirSync(outDir, { recursive: true });
   const seaConfig = {
@@ -115,14 +191,14 @@ ${bundleCode}
       "grpc_stdio.proto":      path.join(SDK_PROTO_DIR, "grpc_stdio.proto"),
     },
   };
-  const seaConfigPath = path.join(providerRoot, "dist", "sea-config.json");
+  const seaConfigPath = path.join(tscOutAbs, "sea-config.json");
   fs.writeFileSync(seaConfigPath, JSON.stringify(seaConfig, null, 2));
 
-  // ── Step 5: node --build-sea ──────────────────────────────────────────────
+  // ── Step 6: node --build-sea ──────────────────────────────────────────────
   process.stdout.write(`▶ Building SEA binary → ${binaryPath}\n`);
   execSync(`node --build-sea "${seaConfigPath}"`, { stdio: "inherit" });
 
-  // ── Step 6: macOS ad-hoc codesign ─────────────────────────────────────────
+  // ── Step 7: macOS ad-hoc codesign ─────────────────────────────────────────
   if (process.platform === "darwin") {
     process.stdout.write("▶ Signing (ad-hoc codesign)...\n");
     execSync(`codesign --sign - --force "${binaryPath}"`, { stdio: "inherit" });
