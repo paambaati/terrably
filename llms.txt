@@ -11,6 +11,7 @@
   - [Local testing](/docs/development/local-testing): Two workflows for iterating on your provider locally — dev_overrides for daily development, and dev mode for attaching a debugger.
   - [Testing](/docs/development/testing): Unit testing resource logic with node:test, and running the full end-to-end suite against a real Terraform binary.
   - [Debugging & troubleshooting](/docs/development/debugging): Attach a Node.js debugger, read structured provider logs, and fix common issues.
+  - [Native addons](/docs/development/native-addons): Why packages with compiled .node files cannot be used in terrably providers, and what to use instead.
 - Reference
   - [State & Diagnostics](/docs/reference/state): State, the Unknown sentinel, and Diagnostics — the data types that flow through every resource lifecycle method.
   - [Structured logging](/docs/reference/logging): Emit structured JSON logs to stderr in the go-hclog format that Terraform parses and re-emits through its own log pipeline.
