@@ -6,6 +6,9 @@ name: Documentation
 on:
   push:
     branches: [main]
+    paths:
+      - 'docs/**'
+      - 'packages/docs/**'
 
 concurrency:
   group: docs-main
