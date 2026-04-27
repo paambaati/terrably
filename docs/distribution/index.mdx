@@ -5,7 +5,7 @@ description: Build a self-contained binary, package release assets, and publish 
 
 ## Why distribute as a binary?
 
-Operators who use your provider should not need Node.js installed. A **Node.js Single Executable Application (SEA)** bundles the JS runtime into a single native binary — exactly like a Go provider — so Terraform can launch it with a normal `required_providers` block.
+Operators who use your provider should not need Node.js or Bun installed. A single-file executable application bundles the JS runtime into a single native binary — exactly like a Go provider — so Terraform can launch it with a normal `required_providers` block.
 
 ---
 
@@ -13,11 +13,13 @@ Operators who use your provider should not need Node.js installed. A **Node.js S
 
 ```bash
 terrably build
-# → bin/terraform-provider-mycloud  (~130 MB, Node.js runtime embedded)
+# → bin/terraform-provider-mycloud  (JS runtime embedded)
 ```
 
 `terrably build` runs these steps automatically –
 
+<Tabs groupId="runtime" items={["Node.js", "Bun"]}>
+<Tab value="Node.js">
 <Steps>
 <Step>
 
@@ -44,7 +46,7 @@ Writes a preamble that extracts embedded `.proto` assets to a temp directory at 
 
 ### Produce the binary
 
-Runs `node --build-sea` (added in Node.js 25.5.0) to inject the entry-point into a copy of the node binary.
+Runs `node --build-sea` (added in Node.js 25.5.0) to inject the entry-point into a copy of the node binary. If run with Bun, runs `bun --compile` (added in Bun 0.6.0) to build a single executable binary.
 
 </Step>
 <Step>
@@ -55,6 +57,27 @@ Runs `codesign --sign -` (ad-hoc signature required for execution on macOS).
 
 </Step>
 </Steps>
+</Tab>
+
+<Tab value="Bun">
+<Steps>
+<Step>
+
+### Produce the binary
+
+Runs `bun --compile` (added in Bun 0.6.0) to build a single executable binary.
+
+</Step>
+<Step>
+
+### Sign (macOS only)
+
+Runs `codesign --sign -` (ad-hoc signature required for execution on macOS).
+
+</Step>
+</Steps>
+</Tab>
+</Tabs>
 
 ### Options
 
@@ -63,6 +86,7 @@ terrably build [options]
 
   --name <n>   Provider short name (default: inferred from package.json "name")
   --out <dir>  Output directory (default: bin/)
+  --target <target>  Bun only – cross-compilation target (e.g. bun-linux-x64, bun-darwin-arm64). See https://bun.sh/docs/bundler/executables#supported-targets for the full list.
 ```
 
 ### Smoke-test the binary
@@ -73,7 +97,7 @@ TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991c
 # → prints the go-plugin handshake line and blocks
 ```
 
-Or run the full schema validation:
+Or run the full schema validation –
 
 ```bash
 terrably check
@@ -83,7 +107,7 @@ terrably check
 
 ## Package a release with `terrably publish`
 
-`terrably publish` assembles all the release assets the Terraform Registry requires: zips, manifest, SHA256SUMS, and GPG signature.
+`terrably publish` assembles all the release assets the Terraform Registry requires – zips, manifest, SHA256SUMS, and GPG signature.
 
 ```
 terrably publish [options]

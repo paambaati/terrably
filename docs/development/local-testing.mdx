@@ -17,14 +17,14 @@ pnpm run build
 # → bin/terraform-provider-mycloud
 ```
 
-Rebuild after any TypeScript change. `terrably build` runs tsc + esbuild + `node --build-sea` in one step.
+Rebuild after any TypeScript change.
 
 </Step>
 <Step>
 
 ### Configure dev_overrides
 
-Point Terraform at the directory containing your binary:
+Point Terraform at the directory containing your binary –
 
 <Tabs groupId="tfrc" items={["Local file (recommended)", "Global ~/.terraformrc"]}>
 <Tab value="Local file (recommended)">

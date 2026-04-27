@@ -1,9 +1,22 @@
 ---
 title: CI release workflow
-description: Multi-platform GitHub Actions matrix that builds a native binary on each platform, then packages and publishes a signed GitHub Release.
+description: Multi-platform GitHub Actions workflow that builds a native binary for each target platform, then packages and publishes a signed GitHub Release.
 ---
 
-## Why a matrix?
+## Node.js vs Bun
+
+| | Node.js | Bun |
+|---|---|---|
+| Cross-compilation | ✗ — one native runner per platform | ✓ — single runner, all targets |
+| CI jobs for a full release | 5–7 build jobs + 1 release job | 1 build job + 1 release job |
+| Binary runtime | Node.js 25.5+ | Bun 0.6.0+ |
+
+---
+
+## GitHub Actions workflow
+
+<Tabs groupId="runtime" items={["Node.js (matrix)", "Bun (single job)"]}>
+<Tab value="Node.js (matrix)">
 
 Node.js SEA does **not** support cross-compilation — a binary built on macOS will not run on Linux. The solution is a CI matrix that builds natively on each platform, then a single packaging step that assembles all binaries into the release assets the Terraform Registry requires.
 
@@ -22,10 +35,6 @@ Packaging job
        terraform-provider-mycloud_1.0.0_SHA256SUMS
        terraform-provider-mycloud_1.0.0_SHA256SUMS.sig
 ```
-
----
-
-## GitHub Actions workflow
 
 Create `.github/workflows/release.yml` in your provider repository. Replace `mycloud` with your provider's short name.
 
@@ -53,14 +62,10 @@ jobs:
       matrix:
         include:
           # Primary targets (required for HCP Terraform compatibility)
-          - { os: linux,   arch: amd64, runner: ubuntu-latest    }
-          - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm }
-          - { os: darwin,  arch: amd64, runner: macos-13         }
+          - { os: linux,   arch: amd64, runner: ubuntu-slim      }
+          - { os: darwin,  arch: amd64, runner: macos-15 intel   }
           - { os: darwin,  arch: arm64, runner: macos-latest     }
           - { os: windows, arch: amd64, runner: windows-latest   }
-          # Extended targets (optional)
-          - { os: linux,   arch: arm,   runner: ubuntu-24.04-arm }
-          - { os: linux,   arch: "386", runner: ubuntu-latest    }
 
     steps:
       - uses: actions/checkout@v6
@@ -96,7 +101,7 @@ jobs:
   release:
     name: Publish to GitHub Releases
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
 
     steps:
       - uses: actions/checkout@v6
@@ -109,7 +114,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: bin/
           pattern: binary-*
@@ -131,6 +136,133 @@ jobs:
             --github-release
 ```
 
+<Callout type="warn">
+Cross-compilation is not supported with Node.js SEA. Each platform target requires its own native runner in the CI matrix. Use Bun to cross-compile from a single job instead.
+</Callout>
+
+</Tab>
+<Tab value="Bun (single job)">
+
+Bun supports cross-compilation natively — a single runner can produce binaries for Linux, macOS, and Windows in one job, eliminating the need for a build matrix. Pass any target from [Bun's supported targets list](https://bun.sh/docs/bundler/executables#supported-targets) to `--target`.
+
+```
+Single build job (one runner, all platforms)
+  └─ terrably build --target bun-linux-x64    →  bin/terraform-provider-mycloud
+  └─ terrably build --target bun-linux-arm64  →  bin/terraform-provider-mycloud
+  └─ terrably build --target bun-darwin-arm64 →  bin/terraform-provider-mycloud
+  └─ terrably build --target bun-darwin-x64   →  bin/terraform-provider-mycloud
+  └─ terrably build --target bun-windows-x64  →  bin/terraform-provider-mycloud.exe
+
+Packaging job
+  └─ terrably publish  →  release/
+       terraform-provider-mycloud_1.0.0_linux_amd64.zip
+       ...
+```
+
+Create `.github/workflows/release.yml` in your provider repository. Replace `mycloud` with your provider's short name.
+
+```yaml title=".github/workflows/release.yml"
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  PROVIDER_NAME: mycloud   # ← change this
+
+jobs:
+  # ── Build: single job, Bun cross-compiles all targets ────────────────────
+  build:
+    name: Build (all platforms)
+    runs-on: ubuntu-slim
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build for all targets
+        shell: bash
+        run: |
+          TARGETS=(
+            "bun-linux-x64    linux   amd64"
+            "bun-linux-arm64  linux   arm64"
+            "bun-darwin-arm64 darwin  arm64"
+            "bun-darwin-x64   darwin  amd64"
+            "bun-windows-x64  windows amd64"
+          )
+          for row in "${TARGETS[@]}"; do
+            read -r TARGET OS ARCH <<< "$row"
+            EXT=""
+            if [ "$OS" = "windows" ]; then EXT=".exe"; fi
+            bun node_modules/terrably/dist/src/cli/index.js build \
+              --name "$PROVIDER_NAME" \
+              --target "$TARGET"
+            mv "bin/terraform-provider-${PROVIDER_NAME}${EXT}" \
+               "bin/terraform-provider-${PROVIDER_NAME}_${OS}_${ARCH}${EXT}"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: bin/terraform-provider-${{ env.PROVIDER_NAME }}_*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── Release: package, sign, publish ──────────────────────────────────────
+  release:
+    name: Publish to GitHub Releases
+    needs: build
+    runs-on: ubuntu-slim
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: binaries
+          path: bin/
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          FP=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+          echo "GPG_FINGERPRINT=${FP}" >> "$GITHUB_ENV"
+
+      - name: Package, sign, and publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bun node_modules/terrably/dist/src/cli/index.js publish \
+            --release-version "${{ github.ref_name }}" \
+            --gpg-key         "${GPG_FINGERPRINT}" \
+            --github-release
+```
+
+<Callout type="info">
+macOS binaries built via cross-compilation are **not** ad-hoc codesigned (codesign requires running on macOS). If you need signed macOS binaries, add a `macos-latest` runner step for the Darwin targets, or sign them as a post-processing step with your Apple Developer certificate.
+</Callout>
+
+</Tab>
+</Tabs>
+
 ---
 
 ## Required GitHub Actions secrets
@@ -150,16 +282,15 @@ To trigger a release: `git tag v1.0.0 && git push origin v1.0.0`
 
 ## Platform support matrix
 
-| Platform | Runner | Priority |
+| Platform | Bun target | Runner |
 |---|---|---|
-| Linux x86-64 (`linux_amd64`) | `ubuntu-latest` | **Required** for HCP Terraform |
-| Linux arm64 (`linux_arm64`) | `ubuntu-24.04-arm` | Recommended |
-| Linux armv6 (`linux_arm`) | `ubuntu-24.04-arm` | Recommended |
-| Linux 386 (`linux_386`) | `ubuntu-latest` | Optional |
-| macOS arm64 (`darwin_arm64`) | `macos-latest` | Recommended |
-| macOS x86-64 (`darwin_amd64`) | `macos-13` | Recommended |
-| Windows x86-64 (`windows_amd64`) | `windows-latest` | Recommended |
+| Linux x86-64 (`linux_amd64`) | `bun-linux-x64` | `ubuntu-slim` |
+| Linux arm64 (`linux_arm64`) | `bun-linux-arm64` | — |
+| macOS arm64 (`darwin_arm64`) | `bun-darwin-arm64` | `macos-latest` |
+| macOS x86-64 (`darwin_amd64`) | `bun-darwin-x64` | `macos-15-intel` |
+| Windows x86-64 (`windows_amd64`) | `bun-windows-x64` | `windows-latest` |
+| Windows arm64 (`windows_arm64`) | `bun-windows-arm64` | — |
 
-<Callout type="warn">
-Cross-compilation is not supported. Each platform requires its own native runner in the CI matrix.
+<Callout type="info">
+This list is not exhaustive, and might be out of date. See https://github.com/actions/runner-images#available-images for the latest runner images, and [Bun's supported targets list](https://bun.sh/docs/bundler/executables#supported-targets) for the targets supported by Bun.
 </Callout>

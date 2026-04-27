@@ -81,10 +81,10 @@ The E2E tests use the built-in `node:test` runner. Two suites run against a real
 | Suite | Provider mode | Binary |
 |---|---|---|
 | `provider: dev mode` | `tsx` + [`TF_REATTACH_PROVIDERS`](https://developer.hashicorp.com/terraform/plugin/debugging#running-terraform-with-a-provider-in-debug-mode) | TypeScript source |
-| `provider: Node SEA binary` | standalone binary | `bin/` |
+| `provider: compiled binary` | standalone binary | `bin/` |
 
 <Callout type="warn">
-The SEA suite requires the provider binary to be built first (`pnpm run build`). It also requires `terraform` to be on your `PATH`.
+The compiled-binary suite requires the provider binary to be built first (`pnpm run build`). It also requires `terraform` to be on your `PATH`.
 </Callout>
 
 ### Prerequisites

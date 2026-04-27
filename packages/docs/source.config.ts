@@ -34,6 +34,20 @@ export default defineConfig({
               .join('\n'),
         },
         {
+          name: 'bun',
+          command: (cmd) =>
+            cmd
+              .split('\n')
+              .map((line) =>
+                line
+                  .replace(/^npm install\b/, 'bun install')
+                  .replace(/^npm i\b/, 'bun install')
+                  .replace(/^npm run\b/, 'bun')
+                  .replace(/^npx\b/, 'bunx'),
+              )
+              .join('\n'),
+        },
+        {
           name: 'yarn',
           command: (cmd) =>
             cmd

@@ -5,10 +5,12 @@ description: Scaffold, implement, build, and test your first Terraform provider 
 
 ## Prerequisites
 
-| Tool | Version | Notes |
+terrably supports two runtimes for the `build` command.
+
+| Runtime | Version | Notes |
 |---|---|---|
-| Node.js | ≥ 25.5.0 | Required for `--build-sea` (single executable build) |
-| Terraform CLI | ≥ 1.0 | For local plan/apply |
+| Node.js | ≥ 25.5.0 | Uses `node --build-sea`; requires a native runner per platform for CI |
+| Bun | ≥ 0.6.0 | Uses `bun build --compile`; supports cross-compilation in a single CI job |
 
 <Steps>
 <Step>
@@ -147,12 +149,40 @@ serve(new MyCloudProvider());
 
 ### Build and verify
 
+<Tabs groupId="runtime" items={["Node.js", "Bun"]}>
+<Tab value="Node.js">
+
 ```bash
 pnpm run build
 # → bin/terraform-provider-mycloud  (~130 MB, Node.js runtime embedded)
 ```
 
-`terrably build` runs `tsc` → `esbuild` → `node --build-sea` in one step. Verify the binary starts correctly –
+`terrably build` runs `tsc --noEmit false` → `esbuild` → `node --build-sea` in one step.
+
+</Tab>
+<Tab value="Bun">
+
+```bash
+bun node_modules/.bin/../terrably/dist/src/cli/index.js build
+# → bin/terraform-provider-mycloud  (~90 MB, Bun runtime embedded)
+```
+
+When invoked via Bun, `terrably build` runs `tsc --noEmit` (typecheck only) → `bun build --compile` in one step. Cross-compile for a specific platform with `--target` — pass any target string from [Bun's supported targets list](https://bun.sh/docs/bundler/executables#supported-targets) –
+
+```bash
+# Build for the current platform
+bun node_modules/terrably/dist/src/cli/index.js build
+
+# Cross-compile for specific targets
+bun node_modules/terrably/dist/src/cli/index.js build --target bun-linux-x64
+bun node_modules/terrably/dist/src/cli/index.js build --target bun-darwin-arm64
+bun node_modules/terrably/dist/src/cli/index.js build --target bun-windows-x64
+```
+
+</Tab>
+</Tabs>
+
+Verify the binary starts correctly –
 
 ```bash
 npx terrably check
