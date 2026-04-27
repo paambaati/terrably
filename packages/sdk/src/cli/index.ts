@@ -38,12 +38,15 @@ cli
 // ---------------------------------------------------------------------------
 
 cli
-  .command("build", "Compile TypeScript, bundle, and produce a self-contained SEA binary")
-  .option("--name <name>", "Provider name (default: read from package.json)")
-  .option("--out <dir>",   "Output directory (default: bin/)")
+  .command("build", "Compile TypeScript and produce a self-contained single-file executable")
+  .option("--name <name>",     "Provider name (default: read from package.json)")
+  .option("--out <dir>",       "Output directory (default: bin/)")
+  .option("--target <target>", "Bun only – cross-compilation target (e.g. bun-linux-x64, bun-darwin-arm64). See https://bun.sh/docs/bundler/executables#supported-targets for the full list.")
   .example("terrably build")
   .example("terrably build --name mycloud --out dist/bin")
-  .action(async (options: { name?: string; out?: string }) => {
+  .example("bun terrably build --target bun-linux-x64")
+  .example("bun terrably build --target bun-darwin-arm64")
+  .action(async (options: { name?: string; out?: string; target?: string }) => {
     await buildCommand(options);
   });
 
