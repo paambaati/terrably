@@ -79,7 +79,8 @@
     "typescript": "6.0.3"
   },
   "engines": {
-    "node": ">=25.5.0"
+    "node": ">=25.5.0",
+    "bun": ">=0.6.0"
   },
   "packageManager": "pnpm@10.33.1"
 }
