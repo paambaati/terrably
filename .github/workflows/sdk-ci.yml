@@ -1,0 +1,85 @@
+name: SDK CI
+
+# Reusable workflow.
+#
+# Job graph:
+#   lint (Node.js only — linter is runtime-agnostic, no need to run twice)
+#     └─ build-and-test (matrix: Node.js | Bun, parallel)
+#
+# Callers that need outputs (e.g. whether to publish) should gate on the
+# entire `ci` job completing successfully.
+
+on:
+  workflow_call:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-slim
+
+    steps:
+      - uses: actions/checkout@v6
+        name: Checkout code
+
+      - uses: pnpm/action-setup@v5
+        name: Setup pnpm
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        name: Setup Node
+        with:
+          node-version: "25.x"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+        working-directory: packages/sdk
+
+  build-and-test:
+    name: Build & test (${{ matrix.runtime }})
+    needs: lint
+    runs-on: ubuntu-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runtime: node, pm: pnpm }
+          - { runtime: bun,  pm: bun  }
+
+    steps:
+      - uses: actions/checkout@v6
+        name: Checkout code
+
+      # ── Runtime setup ──────────────────────────────────────────────────────
+      - if: matrix.runtime == 'node'
+        uses: pnpm/action-setup@v5
+        name: Setup pnpm
+        with:
+          version: 10
+      - if: matrix.runtime == 'node'
+        uses: actions/setup-node@v6
+        name: Setup Node
+        with:
+          node-version: "25.x"
+          cache: pnpm
+      - if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
+        name: Setup Bun
+        with:
+          bun-version: latest
+
+      # ── Steps (pm-agnostic: pnpm/bun both support these flags and subcommands)
+      - name: Install dependencies
+        run: ${{ matrix.pm }} install --frozen-lockfile
+
+      - name: Build
+        run: ${{ matrix.pm }} run build
+        working-directory: packages/sdk
+
+      - name: Test
+        run: ${{ matrix.pm }} run test
+        working-directory: packages/sdk
