@@ -71,6 +71,9 @@ jobs:
         name: Setup Bun
         with:
           bun-version: latest
+      - if: matrix.runtime == 'bun'
+        name: Migrate pnpm lock file to Bun
+        run: bun pm migrate
 
       # ── Steps (pm-agnostic: pnpm/bun both support these flags and subcommands)
       - name: Install dependencies
