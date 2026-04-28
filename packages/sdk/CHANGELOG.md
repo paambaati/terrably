@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.12](https://github.com/paambaati/terrably/compare/v0.0.11...v0.0.12) (2026-04-28)
+
+
+### Bug Fixes
+
+* **ci:** make sure lint runs without errors on CI ([0f85658](https://github.com/paambaati/terrably/commit/0f856582e18628cd77cfa799e3f288a13b723e8b))
+
 ## [0.0.11](https://github.com/paambaati/terrably/compare/v0.0.10...v0.0.11) (2026-04-28)
 
 
