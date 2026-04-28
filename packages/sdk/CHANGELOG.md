@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.11](https://github.com/paambaati/terrably/compare/v0.0.10...v0.0.11) (2026-04-28)
+
+
+### Bug Fixes
+
+* **build:** make sure Bun builds work correctly ([5d2a68a](https://github.com/paambaati/terrably/commit/5d2a68afae0451070f3f17b47a3abf815bfd5c10))
+
 ## [0.0.10](https://github.com/paambaati/terrably/compare/v0.0.9...v0.0.10) (2026-04-28)
 
 
