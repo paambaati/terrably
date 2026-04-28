@@ -23,7 +23,16 @@ import * as _fs from "node:fs";
     ? _Long
     : (_Long as unknown as { default: unknown }).default;
   function _p(pb: unknown) {
-    const p = pb as { util?: { Long?: unknown; fs?: unknown } } | undefined;
+    const p = pb as {
+      util?: {
+        Long?: unknown;
+        fs?: unknown;
+        Buffer?: unknown;
+        _configure?: () => void;
+      };
+      Writer?: { _configure?: (bw: unknown) => void };
+      BufferWriter?: unknown;
+    } | undefined;
     if (p?.util) {
       // util.inquire("long") in a Bun compiled binary resolves "long" as an
       // ESM module (long has "type":"module"), returning the namespace object
@@ -34,6 +43,24 @@ import * as _fs from "node:fs";
         p.util.Long = _lc;
       }
       if (!p.util.fs) p.util.fs = _fs;
+      // In `bun --compile` binaries, `eval("require")` throws "require is not
+      // defined" — Bun's compiler doesn't place `require` in the JavaScript
+      // scope as a variable (it's handled as a compiler intrinsic), so the
+      // `eval("require")` escape used by @protobufjs/inquire fails. The silent
+      // catch in inquire means util.Buffer is left null even though Bun's
+      // Buffer fully implements utf8Write. A null util.Buffer causes
+      // Writer.create() to return a plain Writer whose finish() returns a plain
+      // Uint8Array (no .copy()), which crashes @grpc/grpc-js serializeMessage.
+      // Fix: force util.Buffer to the global Buffer (which IS available in the
+      // compiled binary), then reconfigure the Writer/BufferWriter chain.
+      // Guard: if a future Bun version fixes eval("require") in compiled
+      // binaries, protobufjs will set util.Buffer itself and this block is
+      // a no-op.
+      if (!p.util.Buffer) {
+        p.util.Buffer = Buffer;
+        p.util._configure?.();
+        p.Writer?._configure?.(p.BufferWriter);
+      }
     }
   }
   _p(_pbjs);
