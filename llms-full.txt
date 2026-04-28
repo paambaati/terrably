@@ -4,10 +4,12 @@
 
 ## Prerequisites [#prerequisites]
 
-| Tool          | Version  | Notes                                                |
-| ------------- | -------- | ---------------------------------------------------- |
-| Node.js       | ≥ 25.5.0 | Required for `--build-sea` (single executable build) |
-| Terraform CLI | ≥ 1.0    | For local plan/apply                                 |
+terrably supports two runtimes for the `build` command.
+
+| Runtime | Version  | Notes                                                                     |
+| ------- | -------- | ------------------------------------------------------------------------- |
+| Node.js | ≥ 25.5.0 | Uses `node --build-sea`; requires a native runner per platform for CI     |
+| Bun     | ≥ 0.6.0  | Uses `bun build --compile`; supports cross-compilation in a single CI job |
 
 <Steps>
   <Step>
@@ -21,6 +23,10 @@
 
         <CodeBlockTabsTrigger value="pnpm">
           pnpm
+        </CodeBlockTabsTrigger>
+
+        <CodeBlockTabsTrigger value="bun">
+          bun
         </CodeBlockTabsTrigger>
 
         <CodeBlockTabsTrigger value="yarn">
@@ -41,6 +47,14 @@
         pnpm dlx terrably new mycloud
         cd terraform-provider-mycloud
         pnpm install
+        ```
+      </CodeBlockTab>
+
+      <CodeBlockTab value="bun">
+        ```bash
+        bunx terrably new mycloud
+        cd terraform-provider-mycloud
+        bun install
         ```
       </CodeBlockTab>
 
@@ -179,12 +193,37 @@
   <Step>
     ### Build and verify [#build-and-verify]
 
-    ```bash
-    pnpm run build
-    # → bin/terraform-provider-mycloud  (~130 MB, Node.js runtime embedded)
-    ```
+    <Tabs groupId="runtime" items="[&#x22;Node.js&#x22;, &#x22;Bun&#x22;]">
+      <Tab value="Node.js">
+        ```bash
+        pnpm run build
+        # → bin/terraform-provider-mycloud  (~130 MB, Node.js runtime embedded)
+        ```
 
-    `terrably build` runs `tsc` → `esbuild` → `node --build-sea` in one step. Verify the binary starts correctly –
+        `terrably build` runs `tsc --noEmit false` → `esbuild` → `node --build-sea` in one step.
+      </Tab>
+
+      <Tab value="Bun">
+        ```bash
+        bun node_modules/.bin/../terrably/dist/src/cli/index.js build
+        # → bin/terraform-provider-mycloud  (~90 MB, Bun runtime embedded)
+        ```
+
+        When invoked via Bun, `terrably build` runs `tsc --noEmit` (typecheck only) → `bun build --compile` in one step. Cross-compile for a specific platform with `--target` — pass any target string from [Bun's supported targets list](https://bun.sh/docs/bundler/executables#supported-targets) –
+
+        ```bash
+        # Build for the current platform
+        bun node_modules/terrably/dist/src/cli/index.js build
+
+        # Cross-compile for specific targets
+        bun node_modules/terrably/dist/src/cli/index.js build --target bun-linux-x64
+        bun node_modules/terrably/dist/src/cli/index.js build --target bun-darwin-arm64
+        bun node_modules/terrably/dist/src/cli/index.js build --target bun-windows-x64
+        ```
+      </Tab>
+    </Tabs>
+
+    Verify the binary starts correctly –
 
     ```bash
     npx terrably check
@@ -250,9 +289,9 @@
 
 # terrably [#terrably]
 
-`terrably` lets you write [Terraform](https://developer.hashicorp.com/terraform/plugin) and [OpenTofu](https://opentofu.org) providers in **TypeScript** — full type safety, a familiar ecosystem, and a zero-Go build pipeline.
+`terrably` lets you write [Terraform](https://developer.hashicorp.com/terraform/plugin) and [OpenTofu](https://opentofu.org) providers in **TypeScript** — full type safety, a familiar ecosystem, and using Node.js or Bun.
 
-Providers compile into self-contained [Node.js Single Executable Application](https://nodejs.org/api/single-executable-applications.html) binaries. The Node.js runtime is bundled inside. Operators run `terraform apply` exactly as they would with any Go provider — no Node.js installation required on their machines.
+Providers compile into self-contained binaries. Operators run `terraform apply` exactly as they would with any Go provider — no Node.js or Bun installation required on their machines.
 
 <CodeBlockTabs defaultValue="npm">
   <CodeBlockTabsList>
@@ -262,6 +301,10 @@ Providers compile into self-contained [Node.js Single Executable Application](ht
 
     <CodeBlockTabsTrigger value="pnpm">
       pnpm
+    </CodeBlockTabsTrigger>
+
+    <CodeBlockTabsTrigger value="bun">
+      bun
     </CodeBlockTabsTrigger>
 
     <CodeBlockTabsTrigger value="yarn">
@@ -276,7 +319,7 @@ Providers compile into self-contained [Node.js Single Executable Application](ht
     cd terraform-provider-mycloud
     npm install
     npm run build
-    # → bin/terraform-provider-mycloud (~130 MB, Node.js runtime embedded)
+    # → bin/terraform-provider-mycloud (JS runtime embedded)
     ```
   </CodeBlockTab>
 
@@ -287,7 +330,18 @@ Providers compile into self-contained [Node.js Single Executable Application](ht
     cd terraform-provider-mycloud
     pnpm install
     pnpm run build
-    # → bin/terraform-provider-mycloud (~130 MB, Node.js runtime embedded)
+    # → bin/terraform-provider-mycloud (JS runtime embedded)
+    ```
+  </CodeBlockTab>
+
+  <CodeBlockTab value="bun">
+    ```bash
+    # Scaffold, implement, build
+    bunx terrably new mycloud
+    cd terraform-provider-mycloud
+    bun install
+    bun build
+    # → bin/terraform-provider-mycloud (JS runtime embedded)
     ```
   </CodeBlockTab>
 
@@ -298,7 +352,7 @@ Providers compile into self-contained [Node.js Single Executable Application](ht
     cd terraform-provider-mycloud
     yarn install
     yarn build
-    # → bin/terraform-provider-mycloud (~130 MB, Node.js runtime embedded)
+    # → bin/terraform-provider-mycloud (JS runtime embedded)
     ```
   </CodeBlockTab>
 </CodeBlockTabs>
@@ -1238,13 +1292,13 @@ The simplest workflow. Terraform uses your local binary directly instead of down
     # → bin/terraform-provider-mycloud
     ```
 
-    Rebuild after any TypeScript change. `terrably build` runs tsc + esbuild + `node --build-sea` in one step.
+    Rebuild after any TypeScript change.
   </Step>
 
   <Step>
     ### Configure dev\_overrides [#configure-dev_overrides]
 
-    Point Terraform at the directory containing your binary:
+    Point Terraform at the directory containing your binary –
 
     <Tabs groupId="tfrc" items="[&#x22;Local file (recommended)&#x22;, &#x22;Global ~/.terraformrc&#x22;]">
       <Tab value="Local file (recommended)">
@@ -1390,29 +1444,37 @@ The provider starts manually and stays alive. Terraform reconnects to it on each
 
 
 
-## The constraint [#the-constraint]
+## The constraint — Node.js only [#the-constraint--nodejs-only]
 
-terrably builds providers as [Node.js Single Executable Applications (SEA)](https://nodejs.org/api/single-executable-applications.html). A SEA is a self-contained binary — your provider's JavaScript and its dependencies are bundled by esbuild and injected into a Node.js executable at compile time.
+When building with **Node.js**, terrably produces a [Single Executable Application (SEA)](https://nodejs.org/api/single-executable-applications.html) – your provider's JavaScript and all of its dependencies are bundled by esbuild and injected into a Node.js executable at compile time.
 
 Native addons (`.node` files) are compiled C/C++ shared libraries. They **cannot** be embedded into a SEA binary because –
 
 1. They are platform-specific ELF/Mach-O/PE shared objects, not JavaScript.
-2. Node.js loads them via `dlopen` at runtime from a filesystem path. That path points inside `node_modules`, which does not exist on the end user's machine.
+2. Node.js loads them via `dlopen` at runtime from a filesystem path — a path inside `node_modules`, which does not exist on the end user's machine.
 3. esbuild marks all `*.node` imports as external and leaves the original filesystem path in the bundle. The binary builds successfully, but crashes with `MODULE_NOT_FOUND` the first time Terraform invokes it.
 
-terrably catches this **before the compile step** by scanning `node_modules` for `.node` files. If any are found, the build fails immediately with a list of the offending packages –
+terrably catches this **before the compile step** by scanning esbuild's metafile for unresolved non-builtin imports. If any are found, the build fails immediately with a list of the offending packages –
 
 ```
 ✗ Native addons are not supported in terrably builds.
   The following imports cannot be bundled into a Node.js Single Executable Application –
-    • argon2
-    • @napi-rs/canvas
+    • argon2  (imported by dist/src/main.js)
+    • @napi-rs/canvas  (imported by dist/src/main.js)
 
   To fix this, replace each native dependency with a pure-JS alternative.
-  Alternatively, check `pnpm why <package>\ to find what pulls them in.
+  Alternatively, check `pnpm why <package>` to find what pulls them in.
 ```
 
-## Well-known packages that will fail [#well-known-packages-that-will-fail]
+## Bun — native addons work [#bun--native-addons-work]
+
+When building with **Bun**, `bun build --compile` embeds native `.node` addons directly into the output binary. No changes to your dependency tree are needed.
+
+If your provider uses a native addon and portability across platforms matters, keep in mind that the addon must be compiled for each target OS/architecture separately — cross-compilation via `--target` will produce a binary for the right platform, but the *addon* inside it must also have been compiled for that platform. In practice this means building each target binary on a matching native runner (or in a matching Docker image) rather than purely cross-compiling from one machine.
+
+## Pure-JS alternatives (Node.js) [#pure-js-alternatives-nodejs]
+
+If you need to support the Node.js build path, replace native packages with their pure-JS equivalents.
 
 ### Cryptography [#cryptography]
 
@@ -1433,10 +1495,10 @@ terrably catches this **before the compile step** by scanning `node_modules` for
 
 ### Serialization and parsing [#serialization-and-parsing]
 
-| Package                                                                           | What it does                       | Pure-JS alternative                                                                                           |
-| --------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| [`protobufjs`](https://www.npmjs.com/package/protobufjs) with native acceleration | Protocol Buffers                   | Use `protobufjs` without the optional `@protobufjs/aspromise` native path — the pure-JS fallback is automatic |
-| [`@grpc/grpc-js`](https://www.npmjs.com/package/@grpc/grpc-js)                    | gRPC (used internally by terrably) | Already bundled by terrably — do not add it as a direct dependency                                            |
+| Package                                                                           | What it does                       | Pure-JS alternative                                                                   |
+| --------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------- |
+| [`protobufjs`](https://www.npmjs.com/package/protobufjs) with native acceleration | Protocol Buffers                   | Use `protobufjs` without the optional native path — the pure-JS fallback is automatic |
+| [`@grpc/grpc-js`](https://www.npmjs.com/package/@grpc/grpc-js)                    | gRPC (used internally by terrably) | Already bundled by terrably — do not add it as a direct dependency                    |
 
 ### Compression [#compression]
 
@@ -1455,9 +1517,9 @@ terrably catches this **before the compile step** by scanning `node_modules` for
 
 ***
 
-## Spawned native executables [#spawned-native-executables]
+## Spawned native executables (both runtimes) [#spawned-native-executables-both-runtimes]
 
-A handful of popular packages ship a **platform binary** that is extracted from `node_modules` and invoked via `child_process.spawn` — not a `.node` addon at all. terrably cannot detect these at build time.
+A handful of popular packages ship a **platform binary** that is extracted from `node_modules` and invoked via `child_process.spawn` — not a `.node` addon at all. Neither build path can embed these, and terrably cannot detect them at build time.
 
 Well-known examples –
 
@@ -1475,7 +1537,7 @@ pnpm why <suspect-package>
 
 ***
 
-## How to diagnose a transitive dependency [#how-to-diagnose-a-transitive-dependency]
+## How to diagnose a transitive dependency (Node.js) [#how-to-diagnose-a-transitive-dependency-nodejs]
 
 If `terrably build` fails and you didn't intentionally add a native package, the addon is a transitive dependency of something you did add. Find the culprit –
 
@@ -1483,8 +1545,8 @@ If `terrably build` fails and you didn't intentionally add a native package, the
 # List all packages that depend on the named native package
 pnpm why <native-package-name>
 
-# Alternatively, trace from the .node file path in the error message
-# e.g. node_modules/argon2/build/Release/argon2.node → owner is "argon2"
+# Alternatively, trace from the package name in the error message
+# e.g. "• argon2 (imported by dist/src/main.js)" → pnpm why argon2
 pnpm why argon2
 ```
 
@@ -1492,7 +1554,7 @@ Once you find the parent package, check whether it –
 
 1. Offers an optional native path with a pure-JS fallback (e.g. `protobufjs`) — in which case simply don't install the optional native accelerator.
 2. Exports a separate pure-JS package (e.g. `bcrypt` → `bcryptjs`).
-3. Has no alternative — in which case you'll need to restructure your provider logic to avoid that dependency entirely.
+3. Has no alternative — in which case switch to the Bun build path, or restructure your provider logic to avoid that dependency entirely.
 
 
 # Testing (/docs/development/testing)
@@ -1577,10 +1639,10 @@ The E2E tests use the built-in `node:test` runner. Two suites run against a real
 | Suite                       | Provider mode                                                                                                                                 | Binary            |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | `provider: dev mode`        | `tsx` + [`TF_REATTACH_PROVIDERS`](https://developer.hashicorp.com/terraform/plugin/debugging#running-terraform-with-a-provider-in-debug-mode) | TypeScript source |
-| `provider: Node SEA binary` | standalone binary                                                                                                                             | `bin/`            |
+| `provider: compiled binary` | standalone binary                                                                                                                             | `bin/`            |
 
 <Callout type="warn">
-  The SEA suite requires the provider binary to be built first (`pnpm run build`). It also requires `terraform` to be on your `PATH`.
+  The compiled-binary suite requires the provider binary to be built first (`pnpm run build`). It also requires `terraform` to be on your `PATH`.
 </Callout>
 
 ### Prerequisites [#prerequisites]
@@ -1616,133 +1678,262 @@ pnpm run test
 
 
 
-## Why a matrix? [#why-a-matrix]
+## Node.js vs Bun [#nodejs-vs-bun]
 
-Node.js SEA does **not** support cross-compilation — a binary built on macOS will not run on Linux. The solution is a CI matrix that builds natively on each platform, then a single packaging step that assembles all binaries into the release assets the Terraform Registry requires.
-
-```
-CI matrix (one job per platform)
-  └─ terrably build  →  bin/terraform-provider-mycloud_{os}_{arch}
-
-Packaging job
-  └─ terrably publish  →  release/
-       terraform-provider-mycloud_1.0.0_linux_amd64.zip
-       terraform-provider-mycloud_1.0.0_linux_arm64.zip
-       terraform-provider-mycloud_1.0.0_darwin_amd64.zip
-       terraform-provider-mycloud_1.0.0_darwin_arm64.zip
-       terraform-provider-mycloud_1.0.0_windows_amd64.zip
-       terraform-provider-mycloud_1.0.0_manifest.json
-       terraform-provider-mycloud_1.0.0_SHA256SUMS
-       terraform-provider-mycloud_1.0.0_SHA256SUMS.sig
-```
+|                            | Node.js                            | Bun                            |
+| -------------------------- | ---------------------------------- | ------------------------------ |
+| Cross-compilation          | ✗ — one native runner per platform | ✓ — single runner, all targets |
+| CI jobs for a full release | 5–7 build jobs + 1 release job     | 1 build job + 1 release job    |
+| Binary runtime             | Node.js 25.5+                      | Bun 0.6.0+                     |
 
 ***
 
 ## GitHub Actions workflow [#github-actions-workflow]
 
-Create `.github/workflows/release.yml` in your provider repository. Replace `mycloud` with your provider's short name.
+<Tabs groupId="runtime" items="[&#x22;Node.js (matrix)&#x22;, &#x22;Bun (single job)&#x22;]">
+  <Tab value="Node.js (matrix)">
+    Node.js SEA does **not** support cross-compilation — a binary built on macOS will not run on Linux. The solution is a CI matrix that builds natively on each platform, then a single packaging step that assembles all binaries into the release assets the Terraform Registry requires.
 
-```yaml title=".github/workflows/release.yml"
-name: Release
+    ```
+    CI matrix (one job per platform)
+      └─ terrably build  →  bin/terraform-provider-mycloud_{os}_{arch}
 
-# Triggers on any tag matching v* (e.g. v1.0.0, v1.2.3-beta)
-on:
-  push:
-    tags:
-      - 'v*'
+    Packaging job
+      └─ terrably publish  →  release/
+           terraform-provider-mycloud_1.0.0_linux_amd64.zip
+           terraform-provider-mycloud_1.0.0_linux_arm64.zip
+           terraform-provider-mycloud_1.0.0_darwin_amd64.zip
+           terraform-provider-mycloud_1.0.0_darwin_arm64.zip
+           terraform-provider-mycloud_1.0.0_windows_amd64.zip
+           terraform-provider-mycloud_1.0.0_manifest.json
+           terraform-provider-mycloud_1.0.0_SHA256SUMS
+           terraform-provider-mycloud_1.0.0_SHA256SUMS.sig
+    ```
 
-permissions:
-  contents: write   # needed to create the GitHub Release
+    Create `.github/workflows/release.yml` in your provider repository. Replace `mycloud` with your provider's short name.
 
-env:
-  PROVIDER_NAME: mycloud   # ← change this
+    ```yaml title=".github/workflows/release.yml"
+    name: Release
 
-jobs:
-  # ── Build: one job per OS/arch, runs terrably build natively ─────────────
-  build:
-    name: Build (${{ matrix.os }}_${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix:
-        include:
-          # Primary targets (required for HCP Terraform compatibility)
-          - { os: linux,   arch: amd64, runner: ubuntu-latest    }
-          - { os: linux,   arch: arm64, runner: ubuntu-24.04-arm }
-          - { os: darwin,  arch: amd64, runner: macos-13         }
-          - { os: darwin,  arch: arm64, runner: macos-latest     }
-          - { os: windows, arch: amd64, runner: windows-latest   }
-          # Extended targets (optional)
-          - { os: linux,   arch: arm,   runner: ubuntu-24.04-arm }
-          - { os: linux,   arch: "386", runner: ubuntu-latest    }
+    # Triggers on any tag matching v* (e.g. v1.0.0, v1.2.3-beta)
+    on:
+      push:
+        tags:
+          - 'v*'
 
-    steps:
-      - uses: actions/checkout@v6
+    permissions:
+      contents: write   # needed to create the GitHub Release
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '25'
-          cache: 'npm'
+    env:
+      PROVIDER_NAME: mycloud   # ← change this
 
-      - name: Install dependencies
-        run: npm ci
+    jobs:
+      # ── Build: one job per OS/arch, runs terrably build natively ─────────────
+      build:
+        name: Build (${{ matrix.os }}_${{ matrix.arch }})
+        runs-on: ${{ matrix.runner }}
+        strategy:
+          matrix:
+            include:
+              # Primary targets (required for HCP Terraform compatibility)
+              - { os: linux,   arch: amd64, runner: ubuntu-slim      }
+              - { os: darwin,  arch: amd64, runner: macos-15 intel   }
+              - { os: darwin,  arch: arm64, runner: macos-latest     }
+              - { os: windows, arch: amd64, runner: windows-latest   }
 
-      - name: Build SEA binary
-        shell: bash
-        run: npx terrably build --name "$PROVIDER_NAME"
+        steps:
+          - uses: actions/checkout@v6
 
-      - name: Rename binary with platform suffix
-        shell: bash
-        run: |
-          EXT=""
-          if [ "${{ matrix.os }}" = "windows" ]; then EXT=".exe"; fi
-          mv "bin/terraform-provider-${PROVIDER_NAME}${EXT}" \
-             "bin/terraform-provider-${PROVIDER_NAME}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
+          - uses: actions/setup-node@v6
+            with:
+              node-version: '25'
+              cache: 'npm'
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: binary-${{ matrix.os }}-${{ matrix.arch }}
-          path: bin/terraform-provider-${{ env.PROVIDER_NAME }}_${{ matrix.os }}_${{ matrix.arch }}*
-          if-no-files-found: error
-          retention-days: 1
+          - name: Install dependencies
+            run: npm ci
 
-  # ── Release: collect all binaries, package, sign, publish ────────────────
-  release:
-    name: Publish to GitHub Releases
-    needs: build
-    runs-on: ubuntu-latest
+          - name: Build SEA binary
+            shell: bash
+            run: npx terrably build --name "$PROVIDER_NAME"
 
-    steps:
-      - uses: actions/checkout@v6
+          - name: Rename binary with platform suffix
+            shell: bash
+            run: |
+              EXT=""
+              if [ "${{ matrix.os }}" = "windows" ]; then EXT=".exe"; fi
+              mv "bin/terraform-provider-${PROVIDER_NAME}${EXT}" \
+                 "bin/terraform-provider-${PROVIDER_NAME}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '25'
-          cache: 'npm'
+          - uses: actions/upload-artifact@v4
+            with:
+              name: binary-${{ matrix.os }}-${{ matrix.arch }}
+              path: bin/terraform-provider-${{ env.PROVIDER_NAME }}_${{ matrix.os }}_${{ matrix.arch }}*
+              if-no-files-found: error
+              retention-days: 1
 
-      - name: Install dependencies
-        run: npm ci
+      # ── Release: collect all binaries, package, sign, publish ────────────────
+      release:
+        name: Publish to GitHub Releases
+        needs: build
+        runs-on: ubuntu-slim
 
-      - uses: actions/download-artifact@v4
-        with:
-          path: bin/
-          pattern: binary-*
-          merge-multiple: true
+        steps:
+          - uses: actions/checkout@v6
 
-      - name: Import GPG key
-        run: |
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
-          FP=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
-          echo "GPG_FINGERPRINT=${FP}" >> "$GITHUB_ENV"
+          - uses: actions/setup-node@v6
+            with:
+              node-version: '25'
+              cache: 'npm'
 
-      - name: Package, sign, and publish release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npx terrably publish \
-            --release-version "${{ github.ref_name }}" \
-            --gpg-key         "${GPG_FINGERPRINT}" \
-            --github-release
-```
+          - name: Install dependencies
+            run: npm ci
+
+          - uses: actions/download-artifact@v8
+            with:
+              path: bin/
+              pattern: binary-*
+              merge-multiple: true
+
+          - name: Import GPG key
+            run: |
+              echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+              FP=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+              echo "GPG_FINGERPRINT=${FP}" >> "$GITHUB_ENV"
+
+          - name: Package, sign, and publish release
+            env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            run: |
+              npx terrably publish \
+                --release-version "${{ github.ref_name }}" \
+                --gpg-key         "${GPG_FINGERPRINT}" \
+                --github-release
+    ```
+
+    <Callout type="warn">
+      Cross-compilation is not supported with Node.js SEA. Each platform target requires its own native runner in the CI matrix. Use Bun to cross-compile from a single job instead.
+    </Callout>
+  </Tab>
+
+  <Tab value="Bun (single job)">
+    Bun supports cross-compilation natively — a single runner can produce binaries for Linux, macOS, and Windows in one job, eliminating the need for a build matrix. Pass any target from [Bun's supported targets list](https://bun.sh/docs/bundler/executables#supported-targets) to `--target`.
+
+    ```
+    Single build job (one runner, all platforms)
+      └─ terrably build --target bun-linux-x64    →  bin/terraform-provider-mycloud
+      └─ terrably build --target bun-linux-arm64  →  bin/terraform-provider-mycloud
+      └─ terrably build --target bun-darwin-arm64 →  bin/terraform-provider-mycloud
+      └─ terrably build --target bun-darwin-x64   →  bin/terraform-provider-mycloud
+      └─ terrably build --target bun-windows-x64  →  bin/terraform-provider-mycloud.exe
+
+    Packaging job
+      └─ terrably publish  →  release/
+           terraform-provider-mycloud_1.0.0_linux_amd64.zip
+           ...
+    ```
+
+    Create `.github/workflows/release.yml` in your provider repository. Replace `mycloud` with your provider's short name.
+
+    ```yaml title=".github/workflows/release.yml"
+    name: Release
+
+    on:
+      push:
+        tags:
+          - 'v*'
+
+    permissions:
+      contents: write
+
+    env:
+      PROVIDER_NAME: mycloud   # ← change this
+
+    jobs:
+      # ── Build: single job, Bun cross-compiles all targets ────────────────────
+      build:
+        name: Build (all platforms)
+        runs-on: ubuntu-slim
+
+        steps:
+          - uses: actions/checkout@v6
+
+          - uses: oven-sh/setup-bun@v2
+            with:
+              bun-version: latest
+
+          - name: Install dependencies
+            run: bun install
+
+          - name: Build for all targets
+            shell: bash
+            run: |
+              TARGETS=(
+                "bun-linux-x64    linux   amd64"
+                "bun-linux-arm64  linux   arm64"
+                "bun-darwin-arm64 darwin  arm64"
+                "bun-darwin-x64   darwin  amd64"
+                "bun-windows-x64  windows amd64"
+              )
+              for row in "${TARGETS[@]}"; do
+                read -r TARGET OS ARCH <<< "$row"
+                EXT=""
+                if [ "$OS" = "windows" ]; then EXT=".exe"; fi
+                bun node_modules/terrably/dist/src/cli/index.js build \
+                  --name "$PROVIDER_NAME" \
+                  --target "$TARGET"
+                mv "bin/terraform-provider-${PROVIDER_NAME}${EXT}" \
+                   "bin/terraform-provider-${PROVIDER_NAME}_${OS}_${ARCH}${EXT}"
+              done
+
+          - uses: actions/upload-artifact@v4
+            with:
+              name: binaries
+              path: bin/terraform-provider-${{ env.PROVIDER_NAME }}_*
+              if-no-files-found: error
+              retention-days: 1
+
+      # ── Release: package, sign, publish ──────────────────────────────────────
+      release:
+        name: Publish to GitHub Releases
+        needs: build
+        runs-on: ubuntu-slim
+
+        steps:
+          - uses: actions/checkout@v6
+
+          - uses: oven-sh/setup-bun@v2
+            with:
+              bun-version: latest
+
+          - name: Install dependencies
+            run: bun install
+
+          - uses: actions/download-artifact@v8
+            with:
+              name: binaries
+              path: bin/
+
+          - name: Import GPG key
+            run: |
+              echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+              FP=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+              echo "GPG_FINGERPRINT=${FP}" >> "$GITHUB_ENV"
+
+          - name: Package, sign, and publish release
+            env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            run: |
+              bun node_modules/terrably/dist/src/cli/index.js publish \
+                --release-version "${{ github.ref_name }}" \
+                --gpg-key         "${GPG_FINGERPRINT}" \
+                --github-release
+    ```
+
+    <Callout type="info">
+      macOS binaries built via cross-compilation are **not** ad-hoc codesigned (codesign requires running on macOS). If you need signed macOS binaries, add a `macos-latest` runner step for the Darwin targets, or sign them as a post-processing step with your Apple Developer certificate.
+    </Callout>
+  </Tab>
+</Tabs>
 
 ***
 
@@ -1763,18 +1954,17 @@ jobs:
 
 ## Platform support matrix [#platform-support-matrix]
 
-| Platform                         | Runner             | Priority                       |
-| -------------------------------- | ------------------ | ------------------------------ |
-| Linux x86-64 (`linux_amd64`)     | `ubuntu-latest`    | **Required** for HCP Terraform |
-| Linux arm64 (`linux_arm64`)      | `ubuntu-24.04-arm` | Recommended                    |
-| Linux armv6 (`linux_arm`)        | `ubuntu-24.04-arm` | Recommended                    |
-| Linux 386 (`linux_386`)          | `ubuntu-latest`    | Optional                       |
-| macOS arm64 (`darwin_arm64`)     | `macos-latest`     | Recommended                    |
-| macOS x86-64 (`darwin_amd64`)    | `macos-13`         | Recommended                    |
-| Windows x86-64 (`windows_amd64`) | `windows-latest`   | Recommended                    |
+| Platform                         | Bun target          | Runner           |
+| -------------------------------- | ------------------- | ---------------- |
+| Linux x86-64 (`linux_amd64`)     | `bun-linux-x64`     | `ubuntu-slim`    |
+| Linux arm64 (`linux_arm64`)      | `bun-linux-arm64`   | —                |
+| macOS arm64 (`darwin_arm64`)     | `bun-darwin-arm64`  | `macos-latest`   |
+| macOS x86-64 (`darwin_amd64`)    | `bun-darwin-x64`    | `macos-15-intel` |
+| Windows x86-64 (`windows_amd64`) | `bun-windows-x64`   | `windows-latest` |
+| Windows arm64 (`windows_arm64`)  | `bun-windows-arm64` | —                |
 
-<Callout type="warn">
-  Cross-compilation is not supported. Each platform requires its own native runner in the CI matrix.
+<Callout type="info">
+  This list is not exhaustive, and might be out of date. See [https://github.com/actions/runner-images#available-images](https://github.com/actions/runner-images#available-images) for the latest runner images, and [Bun's supported targets list](https://bun.sh/docs/bundler/executables#supported-targets) for the targets supported by Bun.
 </Callout>
 
 
@@ -1784,7 +1974,7 @@ jobs:
 
 ## Why distribute as a binary? [#why-distribute-as-a-binary]
 
-Operators who use your provider should not need Node.js installed. A &#x2A;*Node.js Single Executable Application (SEA)** bundles the JS runtime into a single native binary — exactly like a Go provider — so Terraform can launch it with a normal `required_providers` block.
+Operators who use your provider should not need Node.js or Bun installed. A single-file executable application bundles the JS runtime into a single native binary — exactly like a Go provider — so Terraform can launch it with a normal `required_providers` block.
 
 ***
 
@@ -1792,42 +1982,62 @@ Operators who use your provider should not need Node.js installed. A &#x2A;*Node
 
 ```bash
 terrably build
-# → bin/terraform-provider-mycloud  (~130 MB, Node.js runtime embedded)
+# → bin/terraform-provider-mycloud  (JS runtime embedded)
 ```
 
 `terrably build` runs these steps automatically –
 
-<Steps>
-  <Step>
-    ### Compile TypeScript [#compile-typescript]
+<Tabs groupId="runtime" items="[&#x22;Node.js&#x22;, &#x22;Bun&#x22;]">
+  <Tab value="Node.js">
+    <Steps>
+      <Step>
+        ### Compile TypeScript [#compile-typescript]
 
-    Runs `tsc` using your project's `tsconfig.json`.
-  </Step>
+        Runs `tsc` using your project's `tsconfig.json`.
+      </Step>
 
-  <Step>
-    ### Bundle with esbuild [#bundle-with-esbuild]
+      <Step>
+        ### Bundle with esbuild [#bundle-with-esbuild]
 
-    Produces a single CJS file with all dependencies inlined.
-  </Step>
+        Produces a single CJS file with all dependencies inlined.
+      </Step>
 
-  <Step>
-    ### Generate a SEA entry-point [#generate-a-sea-entry-point]
+      <Step>
+        ### Generate a SEA entry-point [#generate-a-sea-entry-point]
 
-    Writes a preamble that extracts embedded `.proto` assets to a temp directory at startup and sets `TF_PROTO_DIR`, then appends the esbuild bundle.
-  </Step>
+        Writes a preamble that extracts embedded `.proto` assets to a temp directory at startup and sets `TF_PROTO_DIR`, then appends the esbuild bundle.
+      </Step>
 
-  <Step>
-    ### Produce the binary [#produce-the-binary]
+      <Step>
+        ### Produce the binary [#produce-the-binary]
 
-    Runs `node --build-sea` (added in Node.js 25.5.0) to inject the entry-point into a copy of the node binary.
-  </Step>
+        Runs `node --build-sea` (added in Node.js 25.5.0) to inject the entry-point into a copy of the node binary. If run with Bun, runs `bun --compile` (added in Bun 0.6.0) to build a single executable binary.
+      </Step>
 
-  <Step>
-    ### Sign (macOS only) [#sign-macos-only]
+      <Step>
+        ### Sign (macOS only) [#sign-macos-only]
 
-    Runs `codesign --sign -` (ad-hoc signature required for execution on macOS).
-  </Step>
-</Steps>
+        Runs `codesign --sign -` (ad-hoc signature required for execution on macOS).
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab value="Bun">
+    <Steps>
+      <Step>
+        ### Produce the binary [#produce-the-binary-1]
+
+        Runs `bun --compile` (added in Bun 0.6.0) to build a single executable binary.
+      </Step>
+
+      <Step>
+        ### Sign (macOS only) [#sign-macos-only-1]
+
+        Runs `codesign --sign -` (ad-hoc signature required for execution on macOS).
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
 ### Options [#options]
 
@@ -1836,6 +2046,7 @@ terrably build [options]
 
   --name <n>   Provider short name (default: inferred from package.json "name")
   --out <dir>  Output directory (default: bin/)
+  --target <target>  Bun only – cross-compilation target (e.g. bun-linux-x64, bun-darwin-arm64). See https://bun.sh/docs/bundler/executables#supported-targets for the full list.
 ```
 
 ### Smoke-test the binary [#smoke-test-the-binary]
@@ -1846,7 +2057,7 @@ TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991c
 # → prints the go-plugin handshake line and blocks
 ```
 
-Or run the full schema validation:
+Or run the full schema validation –
 
 ```bash
 terrably check
@@ -1856,7 +2067,7 @@ terrably check
 
 ## Package a release with `terrably publish` [#package-a-release-with-terrably-publish]
 
-`terrably publish` assembles all the release assets the Terraform Registry requires: zips, manifest, SHA256SUMS, and GPG signature.
+`terrably publish` assembles all the release assets the Terraform Registry requires – zips, manifest, SHA256SUMS, and GPG signature.
 
 ```
 terrably publish [options]
@@ -2158,7 +2369,7 @@ upgrade(ctx: UpgradeContext, version: number, old: State): State {
 
 ## Common migration patterns [#common-migration-patterns]
 
-<Tabs groupId="migration" items="[&#x22;Rename&#x22;, &#x22;Remove&#x22;, &#x22;Type change&#x22;, &#x22;Split&#x22;, &#x22;Add new&#x22;]">
+<Tabs groupId="migration" items="[&#x22;Rename&#x22;, &#x22;Remove&#x22;, &#x22;Type change&#x22;, &#x22;Split&#x22;, &#x22;Add new attributes&#x22;]">
   <Tab value="Rename">
     ```typescript
     case 0: {
@@ -2205,7 +2416,7 @@ upgrade(ctx: UpgradeContext, version: number, old: State): State {
     ```
   </Tab>
 
-  <Tab value="Add new">
+  <Tab value="Add new attributes">
     Adding a new attribute **does not require a version bump** if you declare it as `optional: true, computed: true` with a sensible default. Existing state objects read back `null`; your `read()` backfills the value from the live API on the next refresh.
 
     ```typescript
