@@ -2,3 +2,10 @@
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
 @import 'fumadocs-twoslash/twoslash.css';
+
+.prose li a:not(.custom-link-style),
+.prose p a:not(.custom-link-style),
+.prose td a:not(.custom-link-style),
+.prose blockquote a:not(.custom-link-style) {
+  @apply dark:text-yellow-200 underline decoration-yellow-300 dark:decoration-yellow-200;
+}
