@@ -3,7 +3,7 @@ title: Native addons
 description: How native .node addons are handled differently by the Node.js SEA and Bun build paths.
 ---
 
-## The constraint — Node.js SEA only
+## The constraint — Node.js only
 
 When building with **Node.js**, terrably produces a [Single Executable Application (SEA)](https://nodejs.org/api/single-executable-applications.html) – your provider's JavaScript and all of its dependencies are bundled by esbuild and injected into a Node.js executable at compile time.
 
@@ -31,7 +31,7 @@ When building with **Bun**, `bun build --compile` embeds native `.node` addons d
 
 If your provider uses a native addon and portability across platforms matters, keep in mind that the addon must be compiled for each target OS/architecture separately — cross-compilation via `--target` will produce a binary for the right platform, but the *addon* inside it must also have been compiled for that platform. In practice this means building each target binary on a matching native runner (or in a matching Docker image) rather than purely cross-compiling from one machine.
 
-## Pure-JS alternatives (Node.js SEA)
+## Pure-JS alternatives (Node.js)
 
 If you need to support the Node.js build path, replace native packages with their pure-JS equivalents.
 
