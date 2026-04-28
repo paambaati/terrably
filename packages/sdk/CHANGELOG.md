@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.9](https://github.com/paambaati/terrably/compare/v0.0.8...v0.0.9) (2026-04-28)
+
+
+### Features
+
+* Bun support ([ced5695](https://github.com/paambaati/terrably/commit/ced569528381f42071e7ae15dcd7627cbdbf01fc))
+* **core:** support building with Bun ([1366535](https://github.com/paambaati/terrably/commit/13665357a3871979f34546107e79076db094d489))
+
 ## [0.0.8](https://github.com/paambaati/terrably/compare/v0.0.7...v0.0.8) (2026-04-24)
 
 
