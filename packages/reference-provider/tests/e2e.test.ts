@@ -130,7 +130,7 @@ interface ApiFixture {
   proc: ChildProcess;
 }
 
-function startApiServer(port: number): Promise<ApiFixture> {
+async function startApiServer(port: number): Promise<ApiFixture> {
   // Resolve tsx/cjs from this package's node_modules so the spawn doesn't
   // require tsx to be globally installed.
   const tsxCjs = require.resolve("tsx/cjs");
@@ -142,7 +142,8 @@ function startApiServer(port: number): Promise<ApiFixture> {
     stdio: "pipe",
   });
   proc.stderr?.on("data", (d: Buffer) => process.stderr.write(`[api:${port}] ${d}`));
-  return waitForApi(port).then(() => ({ port, proc }));
+  await waitForApi(port);
+  return ({ port, proc });
 }
 
 /**
