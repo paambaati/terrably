@@ -48,6 +48,7 @@ jobs:
           version: 10
 
       - uses: actions/setup-node@v6
+        name: Setup Node
         with:
           node-version: '25.x'
           registry-url: https://registry.npmjs.org
