@@ -4,12 +4,12 @@
 
 ## Prerequisites [#prerequisites]
 
-terrably supports two runtimes for the `build` command.
+terrably supports two runtimes.
 
-| Runtime | Version  | Notes                                                                     |
-| ------- | -------- | ------------------------------------------------------------------------- |
-| Node.js | ≥ 25.5.0 | Uses `node --build-sea`; requires a native runner per platform for CI     |
-| Bun     | ≥ 0.6.0  | Uses `bun build --compile`; supports cross-compilation in a single CI job |
+| Runtime | Version  | Notes                                                                                                                 |
+| ------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| Node.js | ≥ 25.5.0 | Uses `node --build-sea`; requires a native runner per platform for CI                                                 |
+| Bun     | ≥ 0.6.0  | Uses `bun build --compile`; supports cross-compilation in a single CI job, and usually produces a small output binary |
 
 <Steps>
   <Step>
