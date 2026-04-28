@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as esbuild from "esbuild";
 
@@ -7,58 +8,122 @@ import * as esbuild from "esbuild";
 // Proto files live at <terrably-pkg>/proto/ — four levels up.
 const SDK_PROTO_DIR = path.resolve(__dirname, "..", "..", "..", "..", "proto");
 
-export async function buildCommand(options: { name?: string; out?: string }): Promise<void> {
-  const providerRoot = process.cwd();
+// ── Bun single-file executable build ─────────────────────────────────────────
+// Called when `terrably build` is invoked via Bun (e.g. `bun terrably build`).
+// Bun compiles TypeScript natively and supports cross-compilation via --target,
+// so we skip the tsc-emit + esbuild + node --build-sea pipeline entirely.
+async function buildBun(opts: {
+  providerRoot: string;
+  providerName: string;
+  outDir: string;
+  tscRootDir: string | undefined;
+  target: string | undefined;
+}): Promise<{ binaryPath: string }> {
+  const { providerRoot, providerName, outDir, tscRootDir, target } = opts;
 
-  // ── Resolve provider name ─────────────────────────────────────────────────
-  let providerName = options.name;
-  if (!providerName) {
-    const pkgPath = path.join(providerRoot, "package.json");
-    if (!fs.existsSync(pkgPath)) {
-      process.stderr.write(
-        "✗ No package.json found. Run terrably build from your provider's root.\n",
-      );
-      process.exit(1);
-    }
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as { name?: string };
-    providerName = (pkg.name ?? "").replace(/^terraform-provider-/, "").replace(/^@[^/]+\//, "");
-    if (!providerName) {
-      process.stderr.write("✗ Cannot determine provider name. Pass --name <name>.\n");
-      process.exit(1);
-    }
+  // ── tsc --noEmit typecheck ───────────────────────────────────────────────
+  process.stdout.write("▶ Type-checking with tsc...\n");
+  const tscBin = path.join(providerRoot, "node_modules", ".bin", "tsc");
+  const tscCmd = fs.existsSync(tscBin) ? `"${tscBin}"` : "pnpm exec tsc";
+  execSync(`${tscCmd} --noEmit`, { cwd: providerRoot, stdio: "inherit" });
+
+  // ── Resolve TypeScript source entry point ────────────────────────────────
+  // Bun compiles TS natively; point straight at the source file.
+  const tsEntry = tscRootDir
+    ? path.join(providerRoot, tscRootDir, "main.ts")
+    : path.join(providerRoot, "src", "main.ts");
+  if (!fs.existsSync(tsEntry)) {
+    process.stderr.write(
+      `✗ TypeScript entry point not found: ${tsEntry}\n` +
+      `  Make sure src/main.ts (or the rootDir equivalent) exists.\n`,
+    );
+    process.exit(1);
   }
 
-  const outDir     = path.resolve(providerRoot, options.out ?? "bin");
-  const binaryName = `terraform-provider-${providerName}${process.platform === "win32" ? ".exe" : ""}`;
-  const binaryPath = path.join(outDir, binaryName);
+  // ── Determine output binary path ─────────────────────────────────────────
+  // Bun automatically appends .exe for Windows targets; we account for that
+  // when computing the expected output path for reporting.
+  const isWindowsTarget = target ? target.includes("windows") : process.platform === "win32";
+  const isDarwinTarget  = target ? target.includes("darwin")  : process.platform === "darwin";
+  const bunOutFile    = path.join(outDir, `terraform-provider-${providerName}`);
+  const bunBinaryPath = bunOutFile + (isWindowsTarget ? ".exe" : "");
 
-  // ── Resolve tsconfig output directory ────────────────────────────────────
-  // Read tsconfig.json once here so all steps below use the same outDir/rootDir
-  // rather than hardcoding "dist/src" which is wrong when rootDir is set.
-  const tsconfigPath = path.join(providerRoot, "tsconfig.json");
-  let tscOutDir  = "dist";   // TypeScript default
-  let tscRootDir: string | undefined;
-  if (fs.existsSync(tsconfigPath)) {
-    const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, "utf8")) as {
-      compilerOptions?: { outDir?: string; rootDir?: string };
-    };
-    tscOutDir  = tsconfig.compilerOptions?.outDir  ?? "dist";
-    tscRootDir = tsconfig.compilerOptions?.rootDir;
+  // ── Write Bun wrapper entry-point ────────────────────────────────────────
+  // The wrapper uses Bun's `with { type: "file" }` import attribute to embed
+  // the three .proto files into the compiled binary.  At startup the embedded
+  // blobs are extracted to a temp directory so grpc-proto-loader can load them.
+  const toFwd = (p: string) => p.replace(/\\/g, "/");
+  const bunTmpDir      = fs.mkdtempSync(path.join(os.tmpdir(), "terrably-bun-"));
+  const bunWrapperPath = path.join(bunTmpDir, "_bun_entry.ts");
+  fs.writeFileSync(
+    bunWrapperPath,
+    // eslint-disable-next-line prefer-template
+    `// ── Bun SEA preamble: extract .proto assets into a temp dir ────────────────\n` +
+    `import _tfplugin6Proto      from ${JSON.stringify(toFwd(path.join(SDK_PROTO_DIR, "tfplugin6.proto")))}       with { type: "file" };\n` +
+    `import _grpcControllerProto from ${JSON.stringify(toFwd(path.join(SDK_PROTO_DIR, "grpc_controller.proto")))} with { type: "file" };\n` +
+    `import _grpcStdioProto      from ${JSON.stringify(toFwd(path.join(SDK_PROTO_DIR, "grpc_stdio.proto")))}      with { type: "file" };\n` +
+    `import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";\n` +
+    `import { join } from "node:path";\n` +
+    `import { tmpdir } from "node:os";\n` +
+    `\n` +
+    `const _protoDir = mkdtempSync(join(tmpdir(), "tf-js-proto-"));\n` +
+    `process.on("exit", () => { try { rmSync(_protoDir, { recursive: true }); } catch {} });\n` +
+    `writeFileSync(join(_protoDir, "tfplugin6.proto"),       readFileSync(_tfplugin6Proto,      "utf8"));\n` +
+    `writeFileSync(join(_protoDir, "grpc_controller.proto"), readFileSync(_grpcControllerProto, "utf8"));\n` +
+    `writeFileSync(join(_protoDir, "grpc_stdio.proto"),      readFileSync(_grpcStdioProto,      "utf8"));\n` +
+    `process.env["TF_PROTO_DIR"] = _protoDir;\n` +
+    `\n` +
+    `// ── Provider entry point ───────────────────────────────────────────────────\n` +
+    `await import(${JSON.stringify(toFwd(tsEntry))});\n`,
+    "utf8",
+  );
+
+  // ── Run bun build --compile ──────────────────────────────────────────────
+  fs.mkdirSync(outDir, { recursive: true });
+  const bunTargetFlag = target ? ` --target=${target}` : "";
+  process.stdout.write(`▶ Building Bun executable → ${bunBinaryPath}\n`);
+  try {
+    execSync(
+      `bun build --compile ${JSON.stringify(bunWrapperPath)}${bunTargetFlag} --outfile ${JSON.stringify(bunOutFile)}`,
+      { stdio: "inherit" },
+    );
+  } finally {
+    try { fs.rmSync(bunTmpDir, { recursive: true }); } catch { /* non-fatal */ }
   }
-  // Intermediate terrably build artifacts live alongside tsc output.
-  const tscOutAbs = path.resolve(providerRoot, tscOutDir);
 
-  // ── Node.js version check ─────────────────────────────────────────────────
+  // ── macOS ad-hoc codesign ────────────────────────────────────────────────
+  // Only sign when the current machine is macOS and the target is also macOS
+  // (or no target is specified — implying the current platform).
+  if (process.platform === "darwin" && isDarwinTarget) {
+    process.stdout.write("▶ Signing (ad-hoc codesign)...\n");
+    execSync(`codesign --sign - --force "${bunBinaryPath}"`, { stdio: "inherit" });
+  }
+
+  return { binaryPath: bunBinaryPath };
+}
+
+// ── Node.js Single Executable Application build ───────────────────────────────
+// Requires Node.js ≥ 25.5.0 (--build-sea flag was added in that release).
+// Pipeline: tsc → esbuild bundle → SEA entry-point → node --build-sea → codesign
+async function buildNode(opts: {
+  providerRoot: string;
+  providerName: string;
+  outDir: string;
+  binaryPath: string;
+  tscOutAbs: string;
+  tscRootDir: string | undefined;
+}): Promise<{ binaryPath: string }> {
+  const { providerRoot, binaryPath, tscOutAbs, tscRootDir } = opts;
+
+  // ── Node.js version check ────────────────────────────────────────────────
   // --build-sea was added in Node.js 25.5.0 (https://nodejs.org/api/cli.html#build-seaconfig).
   // The older workflow (--experimental-sea-config + postject) works on older
   // versions but terrably uses --build-sea for simplicity.
   const [nodeMajorStr = "0", nodeMinorStr = "0", nodePatchStr = "0"] = process.versions.node.split(".");
-  const nodeMajor = parseInt(nodeMajorStr, 10);
-  const nodeMinor = parseInt(nodeMinorStr, 10);
-  const nodePatch = parseInt(nodePatchStr, 10);
-  const nodeVersion = nodeMajor * 10000 + nodeMinor * 100 + nodePatch;
-  const minVersion  = 25 * 10000 + 5 * 100 + 0;
-  if (nodeVersion < minVersion) {
+  const nodeVersion = parseInt(nodeMajorStr, 10) * 10000
+                    + parseInt(nodeMinorStr, 10) * 100
+                    + parseInt(nodePatchStr, 10);
+  if (nodeVersion < 25 * 10000 + 5 * 100) {
     process.stderr.write(
       `✗ Node.js ≥ 25.5.0 is required to build a Single Executable Application.\n` +
       `  The --build-sea flag was added in Node.js 25.5.0.\n` +
@@ -68,7 +133,7 @@ export async function buildCommand(options: { name?: string; out?: string }): Pr
     process.exit(1);
   }
 
-  // ── Step 1: tsc ───────────────────────────────────────────────────────────
+  // ── Step 1: tsc ──────────────────────────────────────────────────────────
   process.stdout.write("▶ Compiling TypeScript...\n");
   const tscBin = path.join(providerRoot, "node_modules", ".bin", "tsc");
   const tscCmd = fs.existsSync(tscBin) ? `"${tscBin}"` : "pnpm exec tsc";
@@ -77,7 +142,7 @@ export async function buildCommand(options: { name?: string; out?: string }): Pr
   // tooling) still produce compiled output for the SEA build.
   execSync(`${tscCmd} --noEmit false`, { cwd: providerRoot, stdio: "inherit" });
 
-  // ── Step 2: esbuild bundle ────────────────────────────────────────────────
+  // ── Step 2: esbuild bundle ───────────────────────────────────────────────
   process.stdout.write("▶ Bundling with esbuild...\n");
 
   // Derive the compiled entry point from the resolved tsconfig paths.
@@ -146,7 +211,7 @@ export async function buildCommand(options: { name?: string; out?: string }): Pr
     process.exit(1);
   }
 
-  // ── Step 3: Generate SEA entry-point ──────────────────────────────────────
+  // ── Step 3: Generate SEA entry-point ─────────────────────────────────────
   process.stdout.write("▶ Generating SEA entry-point...\n");
   const bundleCode  = fs.readFileSync(bundleOut, "utf8");
 
@@ -176,9 +241,9 @@ ${bundleCode}
     "utf8",
   );
 
-  // ── Step 5: Write sea-config.json ─────────────────────────────────────────
+  // ── Step 4: Write sea-config.json ────────────────────────────────────────
   process.stdout.write("▶ Writing sea-config.json...\n");
-  fs.mkdirSync(outDir, { recursive: true });
+  fs.mkdirSync(opts.outDir, { recursive: true });
   const seaConfig = {
     main:   seaEntryPath,
     output: binaryPath,
@@ -194,16 +259,20 @@ ${bundleCode}
   const seaConfigPath = path.join(tscOutAbs, "sea-config.json");
   fs.writeFileSync(seaConfigPath, JSON.stringify(seaConfig, null, 2));
 
-  // ── Step 6: node --build-sea ──────────────────────────────────────────────
+  // ── Step 5: node --build-sea ─────────────────────────────────────────────
   process.stdout.write(`▶ Building SEA binary → ${binaryPath}\n`);
   execSync(`node --build-sea "${seaConfigPath}"`, { stdio: "inherit" });
 
-  // ── Step 7: macOS ad-hoc codesign ─────────────────────────────────────────
+  // ── Step 6: macOS ad-hoc codesign ────────────────────────────────────────
   if (process.platform === "darwin") {
     process.stdout.write("▶ Signing (ad-hoc codesign)...\n");
     execSync(`codesign --sign - --force "${binaryPath}"`, { stdio: "inherit" });
   }
 
+  return { binaryPath };
+}
+
+function printBuildSummary(binaryPath: string): void {
   const sizeMb = (fs.statSync(binaryPath).size / 1024 / 1024).toFixed(1);
   process.stdout.write(`\n✅  ${binaryPath}  (${sizeMb} MB)\n`);
   process.stdout.write(`\nSmoke test:\n`);
@@ -211,4 +280,54 @@ ${bundleCode}
     `  TF_PLUGIN_MAGIC_COOKIE=d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2 \\\n` +
     `    "${binaryPath}"\n\n`,
   );
+}
+
+// ── Public entry point ────────────────────────────────────────────────────────
+export async function buildCommand(options: { name?: string; out?: string; target?: string }): Promise<void> {
+  const providerRoot = process.cwd();
+
+  // ── Resolve provider name ─────────────────────────────────────────────────
+  let providerName = options.name;
+  if (!providerName) {
+    const pkgPath = path.join(providerRoot, "package.json");
+    if (!fs.existsSync(pkgPath)) {
+      process.stderr.write(
+        "✗ No package.json found. Run terrably build from your provider's root.\n",
+      );
+      process.exit(1);
+    }
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as { name?: string };
+    providerName = (pkg.name ?? "").replace(/^terraform-provider-/, "").replace(/^@[^/]+\//, "");
+    if (!providerName) {
+      process.stderr.write("✗ Cannot determine provider name. Pass --name <name>.\n");
+      process.exit(1);
+    }
+  }
+
+  const outDir = path.resolve(providerRoot, options.out ?? "bin");
+
+  // ── Resolve tsconfig output directory ────────────────────────────────────
+  // Read tsconfig.json once here so all steps use the same outDir/rootDir
+  // rather than hardcoding "dist/src", which is wrong when rootDir is set.
+  const tsconfigPath = path.join(providerRoot, "tsconfig.json");
+  let tscOutDir  = "dist";   // TypeScript default
+  let tscRootDir: string | undefined;
+  if (fs.existsSync(tsconfigPath)) {
+    const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, "utf8")) as {
+      compilerOptions?: { outDir?: string; rootDir?: string };
+    };
+    tscOutDir  = tsconfig.compilerOptions?.outDir  ?? "dist";
+    tscRootDir = tsconfig.compilerOptions?.rootDir;
+  }
+
+  let result: { binaryPath: string };
+  if (typeof process.versions.bun !== "undefined") {
+    result = await buildBun({ providerRoot, providerName, outDir, tscRootDir, target: options.target });
+  } else {
+    const binaryName = `terraform-provider-${providerName}${process.platform === "win32" ? ".exe" : ""}`;
+    const binaryPath = path.join(outDir, binaryName);
+    const tscOutAbs  = path.resolve(providerRoot, tscOutDir);
+    result = await buildNode({ providerRoot, providerName, outDir, binaryPath, tscOutAbs, tscRootDir });
+  }
+  printBuildSummary(result.binaryPath);
 }

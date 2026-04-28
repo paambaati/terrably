@@ -1,31 +1,39 @@
 ---
 title: Native addons
-description: Why packages with compiled .node files cannot be used in terrably providers, and what to use instead.
+description: How native .node addons are handled differently by the Node.js SEA and Bun build paths.
 ---
 
-## The constraint
+## The constraint — Node.js only
 
-terrably builds providers as [Node.js Single Executable Applications (SEA)](https://nodejs.org/api/single-executable-applications.html). A SEA is a self-contained binary — your provider's JavaScript and its dependencies are bundled by esbuild and injected into a Node.js executable at compile time.
+When building with **Node.js**, terrably produces a [Single Executable Application (SEA)](https://nodejs.org/api/single-executable-applications.html) – your provider's JavaScript and all of its dependencies are bundled by esbuild and injected into a Node.js executable at compile time.
 
 Native addons (`.node` files) are compiled C/C++ shared libraries. They **cannot** be embedded into a SEA binary because –
 
 1. They are platform-specific ELF/Mach-O/PE shared objects, not JavaScript.
-2. Node.js loads them via `dlopen` at runtime from a filesystem path. That path points inside `node_modules`, which does not exist on the end user's machine.
+2. Node.js loads them via `dlopen` at runtime from a filesystem path — a path inside `node_modules`, which does not exist on the end user's machine.
 3. esbuild marks all `*.node` imports as external and leaves the original filesystem path in the bundle. The binary builds successfully, but crashes with `MODULE_NOT_FOUND` the first time Terraform invokes it.
 
-terrably catches this **before the compile step** by scanning `node_modules` for `.node` files. If any are found, the build fails immediately with a list of the offending packages –
+terrably catches this **before the compile step** by scanning esbuild's metafile for unresolved non-builtin imports. If any are found, the build fails immediately with a list of the offending packages –
 
 ```
 ✗ Native addons are not supported in terrably builds.
   The following imports cannot be bundled into a Node.js Single Executable Application –
-    • argon2
-    • @napi-rs/canvas
+    • argon2  (imported by dist/src/main.js)
+    • @napi-rs/canvas  (imported by dist/src/main.js)
 
   To fix this, replace each native dependency with a pure-JS alternative.
-  Alternatively, check `pnpm why <package>\ to find what pulls them in.
+  Alternatively, check `pnpm why <package>` to find what pulls them in.
 ```
 
-## Well-known packages that will fail
+## Bun — native addons work
+
+When building with **Bun**, `bun build --compile` embeds native `.node` addons directly into the output binary. No changes to your dependency tree are needed.
+
+If your provider uses a native addon and portability across platforms matters, keep in mind that the addon must be compiled for each target OS/architecture separately — cross-compilation via `--target` will produce a binary for the right platform, but the *addon* inside it must also have been compiled for that platform. In practice this means building each target binary on a matching native runner (or in a matching Docker image) rather than purely cross-compiling from one machine.
+
+## Pure-JS alternatives (Node.js)
+
+If you need to support the Node.js build path, replace native packages with their pure-JS equivalents.
 
 ### Cryptography
 
@@ -48,7 +56,7 @@ terrably catches this **before the compile step** by scanning `node_modules` for
 
 | Package | What it does | Pure-JS alternative |
 |---|---|---|
-| [`protobufjs`](https://www.npmjs.com/package/protobufjs) with native acceleration | Protocol Buffers | Use `protobufjs` without the optional `@protobufjs/aspromise` native path — the pure-JS fallback is automatic |
+| [`protobufjs`](https://www.npmjs.com/package/protobufjs) with native acceleration | Protocol Buffers | Use `protobufjs` without the optional native path — the pure-JS fallback is automatic |
 | [`@grpc/grpc-js`](https://www.npmjs.com/package/@grpc/grpc-js) | gRPC (used internally by terrably) | Already bundled by terrably — do not add it as a direct dependency |
 
 ### Compression
@@ -68,9 +76,9 @@ terrably catches this **before the compile step** by scanning `node_modules` for
 
 ---
 
-## Spawned native executables
+## Spawned native executables (both runtimes)
 
-A handful of popular packages ship a **platform binary** that is extracted from `node_modules` and invoked via `child_process.spawn` — not a `.node` addon at all. terrably cannot detect these at build time.
+A handful of popular packages ship a **platform binary** that is extracted from `node_modules` and invoked via `child_process.spawn` — not a `.node` addon at all. Neither build path can embed these, and terrably cannot detect them at build time.
 
 Well-known examples –
 
@@ -88,7 +96,7 @@ pnpm why <suspect-package>
 
 ---
 
-## How to diagnose a transitive dependency
+## How to diagnose a transitive dependency (Node.js)
 
 If `terrably build` fails and you didn't intentionally add a native package, the addon is a transitive dependency of something you did add. Find the culprit –
 
@@ -96,12 +104,12 @@ If `terrably build` fails and you didn't intentionally add a native package, the
 # List all packages that depend on the named native package
 pnpm why <native-package-name>
 
-# Alternatively, trace from the .node file path in the error message
-# e.g. node_modules/argon2/build/Release/argon2.node → owner is "argon2"
+# Alternatively, trace from the package name in the error message
+# e.g. "• argon2 (imported by dist/src/main.js)" → pnpm why argon2
 pnpm why argon2
 ```
 
 Once you find the parent package, check whether it –
 1. Offers an optional native path with a pure-JS fallback (e.g. `protobufjs`) — in which case simply don't install the optional native accelerator.
 2. Exports a separate pure-JS package (e.g. `bcrypt` → `bcryptjs`).
-3. Has no alternative — in which case you'll need to restructure your provider logic to avoid that dependency entirely.
+3. Has no alternative — in which case switch to the Bun build path, or restructure your provider logic to avoid that dependency entirely.

@@ -1,6 +1,7 @@
 {
     "recommendations": [
         "ronnidc.nunjucks",
-        "oxc.oxc-vscode"
+        "oxc.oxc-vscode",
+        "unifiedjs.vscode-mdx"
     ]
 }

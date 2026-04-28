@@ -16,10 +16,10 @@ const promises: Record<string, Promise<NpmData>> = {};
 async function fetchNpmInfo(pkg: string): Promise<NpmData> {
   const [regRes, dlRes] = await Promise.all([
     fetch(`https://registry.npmjs.org/${pkg}/latest`, {
-      next: { revalidate: 3600 },
+      cache: 'no-store',
     }),
     fetch(`https://api.npmjs.org/downloads/point/last-week/${pkg}`, {
-      next: { revalidate: 3600 },
+      cache: 'no-store',
     }),
   ]);
 

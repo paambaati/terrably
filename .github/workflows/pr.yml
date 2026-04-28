@@ -1,0 +1,10 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ci:
+    uses: ./.github/workflows/sdk-ci.yml
