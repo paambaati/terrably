@@ -84,7 +84,7 @@ upgrade(ctx: UpgradeContext, version: number, old: State): State {
 
 ## Common migration patterns
 
-<Tabs groupId="migration" items={["Rename", "Remove", "Type change", "Split", "Add new"]}>
+<Tabs groupId="migration" items={["Rename", "Remove", "Type change", "Split", "Add new attributes"]}>
 <Tab value="Rename">
 
 ```typescript
@@ -135,7 +135,7 @@ case 0: {
 ```
 
 </Tab>
-<Tab value="Add new">
+<Tab value="Add new attributes">
 
 Adding a new attribute **does not require a version bump** if you declare it as `optional: true, computed: true` with a sensible default. Existing state objects read back `null`; your `read()` backfills the value from the live API on the next refresh.
 
