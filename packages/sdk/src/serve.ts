@@ -17,6 +17,7 @@
  *   TF_LOG / TF_LOG_PROVIDER – structured log level (see logger.ts)
  */
 
+import "./_bun_patch.js"; // MUST be first — see _bun_patch.ts
 import type * as SelfsignedLib from "selfsigned";
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";

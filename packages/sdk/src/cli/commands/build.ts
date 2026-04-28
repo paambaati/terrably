@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as esbuild from "esbuild";
@@ -47,13 +47,77 @@ async function buildBun(opts: {
   const bunOutFile    = path.join(outDir, `terraform-provider-${providerName}`);
   const bunBinaryPath = bunOutFile + (isWindowsTarget ? ".exe" : "");
 
+  // ── esbuild pre-bundle ────────────────────────────────────────────────────
+  // Bundle the provider code and ALL its npm dependencies into a single flat
+  // ESM file BEFORE passing it to bun --compile.
+  //
+  // Why? Bun's bundler resolves modules relative to each source file's real
+  // path on disk. When the terrably SDK is installed via a pnpm workspace
+  // symlink (file: protocol), serve.ts's realpath is inside the terrably
+  // monorepo, so Bun resolves protobufjs from the SDK workspace. Meanwhile the
+  // wrapper (written to providerRoot) resolves the same package from the
+  // provider's node_modules. Two different filesystem paths → two separate
+  // module instances → the serve.ts patch only fixes one of them.
+  //
+  // esbuild pre-bundling starts from tsEntry, follows every import through
+  // symlinks (using realpath semantics for resolution), and collapses all
+  // copies of every package into ONE inline copy. The resulting flat bundle
+  // is handed to `bun --compile`, which never needs to resolve node_modules
+  // again. There is now exactly ONE protobufjs instance, and the patch in
+  // serve.ts correctly covers it.
+  //
+  // esbuild is already a dependency of the SDK (used by the Node SEA path),
+  // so this adds no new packages.
+  process.stdout.write("\u25b6 Pre-bundling with esbuild...\n");
+  const esBundlePath = path.join(providerRoot, `_terrably_esbundle_${process.pid}.cjs`);
+
+  // Resolve the canonical protobufjs path from the SDK's own context so we can
+  // alias every other copy to it. pnpm's virtual-store layout can place a copy
+  // of protobufjs in both the hoisted terrably/node_modules/protobufjs AND in
+  // terrably/node_modules/.pnpm/protobufjs@x.y.z/…, and the consumer's
+  // workspace can have yet another copy. esbuild deduplicates by resolved path,
+  // so different paths → duplicate module instances → the serve.ts util.fs patch
+  // only fixes one of them. Aliasing "protobufjs" (and its subpath) to a single
+  // resolved file forces esbuild to emit exactly one copy.
+  // esbuild alias needs the DIRECTORY of protobufjs, not the resolved main
+  // file. Subpath imports like "protobufjs/ext/descriptor" are resolved by
+  // appending the suffix to the alias target, so the target must be the
+  // package root directory (e.g. ".../node_modules/protobufjs"), not
+  // ".../node_modules/protobufjs/index.js".
+  const pbjsDir = path.dirname(require.resolve("protobufjs/package.json"));
+
+  await esbuild.build({
+    entryPoints: [tsEntry],
+    bundle: true,
+    // CJS format is critical for Bun --compile compatibility:
+    // In ESM format, `require` is not defined at module scope, so
+    // @protobufjs/inquire's dynamic require() fails → util.Long and util.fs
+    // are left null. In CJS format, `require` IS the real CommonJS require
+    // inside every bundled factory, so protobufjs initialises util.Long and
+    // util.fs correctly without any patching.
+    format: "cjs",
+    platform: "node",    // externalises Node built-ins automatically
+    outfile: esBundlePath,
+    // .node native addons cannot be inlined — leave them external so that
+    // bun --compile can embed them from the filesystem as usual.
+    external: ["*.node"],
+    // Collapse all protobufjs imports to ONE canonical copy so there is only
+    // one util singleton in the bundle.
+    alias: { "protobufjs": pbjsDir },
+    logLevel: "silent",  // tsc already validated types above
+  });
+
   // ── Write Bun wrapper entry-point ────────────────────────────────────────
   // The wrapper uses Bun's `with { type: "file" }` import attribute to embed
-  // the three .proto files into the compiled binary.  At startup the embedded
-  // blobs are extracted to a temp directory so grpc-proto-loader can load them.
+  // Write the wrapper directly in providerRoot (same level as package.json
+  // and node_modules/) so Bun's module resolver — which is anchored at the
+  // entry file's package — resolves "terrably" and all other dependencies
+  // without needing to walk up out of a subdirectory. A subdirectory wrapper
+  // (even inside providerRoot) causes "Could not resolve" errors when using
+  // --target cross-compilation because Bun scopes resolution to the entry's
+  // nearest package root.
   const toFwd = (p: string) => p.replace(/\\/g, "/");
-  const bunTmpDir      = fs.mkdtempSync(path.join(providerRoot, ".terrably-bun-"));
-  const bunWrapperPath = path.join(bunTmpDir, "_bun_entry.ts");
+  const bunWrapperPath = path.join(providerRoot, `_terrably_bun_entry_${process.pid}.ts`);
   fs.writeFileSync(
     bunWrapperPath,
     // eslint-disable-next-line prefer-template
@@ -72,8 +136,8 @@ async function buildBun(opts: {
     `writeFileSync(join(_protoDir, "grpc_stdio.proto"),      readFileSync(_grpcStdioProto,      "utf8"));\n` +
     `process.env["TF_PROTO_DIR"] = _protoDir;\n` +
     `\n` +
-    `// ── Provider entry point ───────────────────────────────────────────────────\n` +
-    `await import(${JSON.stringify(toFwd(tsEntry))});\n`,
+    `// ── Provider entry point (pre-bundled by esbuild) ────────────────────────\n` +
+    `await import(${JSON.stringify(toFwd(esBundlePath))});\n`,
     "utf8",
   );
 
@@ -87,7 +151,50 @@ async function buildBun(opts: {
       { stdio: "inherit" },
     );
   } finally {
-    try { fs.rmSync(bunTmpDir, { recursive: true }); } catch { /* non-fatal */ }
+    try { fs.rmSync(bunWrapperPath); } catch { /* non-fatal */ }
+    try { fs.rmSync(esBundlePath);   } catch { /* non-fatal */ }
+  }
+
+  // ── Post-build smoke test ──────────────────────────────────────────────────
+  // Run the compiled binary for up to 3 s with the Terraform magic cookie set.
+  // A healthy binary prints the go-plugin handshake ("1|6|unix|…") to stdout
+  // and then waits for connections — it does NOT exit on its own.
+  // If it exits before the timeout, it crashed; we surface the error immediately
+  // rather than letting CI discover it later.
+  //
+  // To skip the smoke test (e.g. cross-compilation), set TERRABLY_SKIP_SMOKETEST=1.
+  if (!target && !process.env["TERRABLY_SKIP_SMOKETEST"]) {
+    process.stdout.write("▶ Smoke-testing binary...\n");
+    const HANDSHAKE_RE = /^1\|6\|/;
+    const MAGIC = "d602bf8f470bc67ca7faa0386276bbdd4330efaf76d1a219cb4d6991ca9872b2";
+    const st = spawnSync(bunBinaryPath, [], {
+      env: { ...process.env, TF_PLUGIN_MAGIC_COOKIE: MAGIC },
+      timeout: 3000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stOut = st.stdout?.toString() ?? "";
+    const stErr = st.stderr?.toString() ?? "";
+    if (st.signal === "SIGTERM" || st.error?.message?.includes("ETIMEDOUT")) {
+      // Binary ran for the full 3 s without crashing — check for handshake line
+      if (HANDSHAKE_RE.test(stOut)) {
+        process.stdout.write("  Handshake: OK\n");
+      } else {
+        process.stderr.write(
+          `\n⚠️  Binary ran but emitted no go-plugin handshake.\n` +
+          `   stdout: ${stOut.slice(0, 120)}\n` +
+          `   stderr: ${stErr.slice(0, 200)}\n`,
+        );
+      }
+    } else {
+      // Binary exited before the timeout — it crashed.
+      process.stderr.write(
+        `\n❌ Smoke test FAILED — binary exited with code ${st.status ?? "unknown"}.\n` +
+        `   stderr: ${stErr.slice(0, 400)}\n` +
+        `\n   Hint: search node_modules for new @protobufjs/inquire users:\n` +
+        `   grep -rl "@protobufjs/inquire" node_modules --include='*.js'\n`,
+      );
+      process.exit(1);
+    }
   }
 
   // ── macOS ad-hoc codesign ────────────────────────────────────────────────

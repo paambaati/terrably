@@ -200,7 +200,7 @@ function createZip(
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   } else {
-    // On Windows the build host has no system `zip`.  Use adm-zip instead.
+    // On Windows the build host has no system `zip`. Use adm-zip instead.
     // Windows Terraform ignores Unix permissions, so the missing OS byte
     // is not a problem for .exe providers.
     const zip = new AdmZip();
