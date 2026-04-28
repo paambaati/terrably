@@ -1,6 +1,5 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as esbuild from "esbuild";
 
@@ -53,7 +52,7 @@ async function buildBun(opts: {
   // the three .proto files into the compiled binary.  At startup the embedded
   // blobs are extracted to a temp directory so grpc-proto-loader can load them.
   const toFwd = (p: string) => p.replace(/\\/g, "/");
-  const bunTmpDir      = fs.mkdtempSync(path.join(os.tmpdir(), "terrably-bun-"));
+  const bunTmpDir      = fs.mkdtempSync(path.join(providerRoot, ".terrably-bun-"));
   const bunWrapperPath = path.join(bunTmpDir, "_bun_entry.ts");
   fs.writeFileSync(
     bunWrapperPath,
