@@ -278,7 +278,6 @@ export async function serve(provider: Provider, opts: ServeOptions = {}): Promis
   await new Promise<void>((resolve, reject) => {
     server.bindAsync(`unix://${socketPath}`, creds, (err) => {
       if (err) return reject(err);
-      server.start();
       resolve();
     });
   });
