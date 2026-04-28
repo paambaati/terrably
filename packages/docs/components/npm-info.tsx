@@ -15,12 +15,8 @@ const promises: Record<string, Promise<NpmData>> = {};
 
 async function fetchNpmInfo(pkg: string): Promise<NpmData> {
   const [regRes, dlRes] = await Promise.all([
-    fetch(`https://registry.npmjs.org/${pkg}/latest`, {
-      cache: 'no-store',
-    }),
-    fetch(`https://api.npmjs.org/downloads/point/last-week/${pkg}`, {
-      cache: 'no-store',
-    }),
+    fetch(`https://registry.npmjs.org/${pkg}/latest`),
+    fetch(`https://api.npmjs.org/downloads/point/last-week/${pkg}`),
   ]);
 
   if (!regRes.ok) throw new Error(`Failed to fetch npm data for ${pkg}`);
