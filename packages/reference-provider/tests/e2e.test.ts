@@ -147,7 +147,7 @@ function startApiServer(port: number): Promise<ApiFixture> {
 
 /**
  * Start the provider in dev mode (TF_PLUGIN_DEBUG=1) via tsx and wait until
- * it prints TF_REATTACH_PROVIDERS to stdout.  Returns the JSON string value
+ * it prints TF_REATTACH_PROVIDERS to stdout. Returns the JSON string value
  * ready to be passed as the TF_REATTACH_PROVIDERS env var.
  */
 function startProviderDevMode(timeoutMs = 10_000): Promise<{ proc: ChildProcess; reattachJson: string }> {
