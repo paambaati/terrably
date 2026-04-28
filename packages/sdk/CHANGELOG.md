@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.10](https://github.com/paambaati/terrably/compare/v0.0.9...v0.0.10) (2026-04-28)
+
+
+### Bug Fixes
+
+* **build:** fix broken build command in Bun ([4a43709](https://github.com/paambaati/terrably/commit/4a437098cce871aa545988a3cc0f84a53401ed3a))
+
 ## [0.0.9](https://github.com/paambaati/terrably/compare/v0.0.8...v0.0.9) (2026-04-28)
 
 
