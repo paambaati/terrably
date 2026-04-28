@@ -273,12 +273,16 @@ async function getOrCreateRelease(
     return (await listResp.json()) as GitHubRelease;
   }
 
-  // Create new release
+  // Create new release.
   const body = JSON.stringify({
     tag_name: tag,
     name: tag,
     draft,
-    prerelease: tag.includes("-"),
+    // NOTE: Do NOT set `prerelease: true` even for SemVer pre-release tags
+    // (e.g. v1.2.3-beta.0). The Terraform Registry only ingests GitHub releases
+    // where `prerelease` is false. The SemVer pre-release suffix in the tag is
+    // what tells Terraform CLI the version is pre-release (won't auto-select it).
+    prerelease: false,
     generate_release_notes: false,
   });
 
