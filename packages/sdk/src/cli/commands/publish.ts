@@ -403,7 +403,7 @@ export async function publishCommand(options: PublishOptions): Promise<void> {
 
   // ── Detect binaries ───────────────────────────────────────────────────────
   const binaries = detectBinaries(binariesDir, baseName);
-  process.stdout.write(`  Found ${binaries.length} platform binary(ies):\n`);
+  process.stdout.write(`  Found ${binaries.length} platform ${binaries.length === 1 ? 'binary' : 'binaries'}:\n`);
   for (const b of binaries) {
     process.stdout.write(`    ${b.os}_${b.arch}  ←  ${path.basename(b.filePath)}\n`);
   }
