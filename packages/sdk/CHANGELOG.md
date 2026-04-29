@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.14](https://github.com/paambaati/terrably/compare/v0.0.13...v0.0.14) (2026-04-29)
+
+
+### Bug Fixes
+
+* **build:** more Bun-specific fixes (to get cc4771a published) ([867cd0b](https://github.com/paambaati/terrably/commit/867cd0b463d0bb26ac37b12cbc48c11a50c591db))
+
 ## [0.0.13](https://github.com/paambaati/terrably/compare/v0.0.12...v0.0.13) (2026-04-29)
 
 
