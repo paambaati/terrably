@@ -68,7 +68,7 @@ jobs:
         with:
           bun-version: latest
 
-      # ── Steps (pm-agnostic: pnpm/bun both support these flags and subcommands)
+      # ── Steps (run all builds and tests using both Node and Bun)
       - name: Install dependencies
         run: ${{ matrix.pm }} install --frozen-lockfile
 
@@ -78,4 +78,3 @@ jobs:
 
       - name: Test (${{ matrix.runtime }})
         run: ${{ matrix.pm }} run test
-        working-directory: packages/sdk
