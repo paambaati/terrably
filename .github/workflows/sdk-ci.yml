@@ -32,6 +32,11 @@ jobs:
           node-version: "25.x"
           cache: pnpm
 
+      - uses: hashicorp/setup-terraform@v4
+        name: Setup Terraform
+        with:
+          terraform_version: latest
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
