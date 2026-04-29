@@ -76,15 +76,16 @@ kill $API_PID
 
 ## End-to-end tests
 
-The E2E tests use the built-in `node:test` runner. Two suites run against a real Terraform binary –
+The E2E tests use the built-in `node:test` runner. Three suites run against a real Terraform binary –
 
 | Suite | Provider mode | Binary |
 |---|---|---|
 | `provider: dev mode` | `tsx` + [`TF_REATTACH_PROVIDERS`](https://developer.hashicorp.com/terraform/plugin/debugging#running-terraform-with-a-provider-in-debug-mode) | TypeScript source |
-| `provider: compiled binary` | standalone binary | `bin/` |
+| `provider: Node SEA binary` | standalone binary (Node.js SEA) | `bin/` |
+| `provider: Bun compiled binary` | standalone binary (`bun --compile`) | `bin-bun/` |
 
 <Callout type="warn">
-The compiled-binary suite requires the provider binary to be built first (`pnpm run build`). It also requires `terraform` to be on your `PATH`.
+The binary suites require the provider binaries to be built first. They also require `terraform` to be on your `PATH`. The Bun suite is skipped automatically if `bun` is not on your `PATH`.
 </Callout>
 
 ### Prerequisites
@@ -92,13 +93,17 @@ The compiled-binary suite requires the provider binary to be built first (`pnpm 
 <Steps>
 <Step>
 
-### Build the reference provider
+### Build the reference provider binaries
 
 ```bash
-# From the monorepo root
-cd packages/sdk && pnpm exec tsc
-cd packages/reference-provider && pnpm exec tsc && pnpm run build:binary
+# Node SEA binary → bin/
+pnpm run build:binary
+
+# Bun compiled binary → bin-bun/ (requires bun in PATH)
+pnpm run build:binary:bun
 ```
+
+The `pretest` script runs `ensure-binary.mjs` automatically before `pnpm run test`, so you only need to run these manually when you change provider source.
 
 </Step>
 <Step>
