@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/paambaati/terraform-provider-gpcloud/actions/workflows/e2e-terrably-upgrade.yml/badge.svg)](https://github.com/paambaati/terraform-provider-gpcloud/actions/workflows/e2e-terrably-upgrade.yml)
 
-Build Terraform & OpenTofu providers in TypeScript.
+Build Terraform & OpenTofu providers in TypeScript, using Node.js or Bun.
 
 **[Read full documentation →](https://paambaati.github.io/terrably/)**
 
