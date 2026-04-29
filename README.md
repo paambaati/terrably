@@ -1,6 +1,6 @@
 # terrably
 
-[![Tests](https://github.com/paambaati/terraform-provider-gpcloud/actions/workflows/e2e-terrably-upgrade.yml/badge.svg)](https://github.com/paambaati/terraform-provider-gpcloud/actions/workflows/e2e-terrably-upgrade.yml)
+[![Tests](https://github.com/paambaati/terraform-provider-gpcloud/actions/workflows/e2e-terrably-upgrade.yml/badge.svg)](https://github.com/paambaati/terraform-provider-gpcloud/actions/workflows/e2e-terrably-upgrade.yml) [![NPM](https://img.shields.io/npm/v/terrably)](https://www.npmjs.com/package/terrably)
 
 Build Terraform & OpenTofu providers in TypeScript, using Node.js or Bun.
 
