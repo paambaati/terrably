@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.13](https://github.com/paambaati/terrably/compare/v0.0.12...v0.0.13) (2026-04-29)
+
+
+### Bug Fixes
+
+* **build:** additional Bun-specific fixes ([cc4771a](https://github.com/paambaati/terrably/commit/cc4771a71edb88de200402bdda5e6599d02665d0))
+* **publish:** always publish everything as a release, never a pre-release, so TF registry can list it ([4bfc693](https://github.com/paambaati/terrably/commit/4bfc6937517e322ad68aa3436ebd7dcb7b8bf1ac))
+* remove Bun-specific warnings ([cd75cfd](https://github.com/paambaati/terrably/commit/cd75cfdc0e7f9bf62d085c7467aec4e59d2fd274))
+
 ## [0.0.12](https://github.com/paambaati/terrably/compare/v0.0.11...v0.0.12) (2026-04-28)
 
 
