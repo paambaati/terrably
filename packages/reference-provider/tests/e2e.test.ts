@@ -3,17 +3,19 @@
  *
  * Uses the Node.js built-in test runner (node:test).
  *
- * What is tested:
- *   1. Dev mode  – provider started directly via tsx; Terraform reattaches via
- *                  TF_REATTACH_PROVIDERS (the normal development workflow)
- *   2. Node SEA binary     – provider runs as a self-contained binary (bin-sea/)
+ * What is tested –
+ *   1. Dev mode        – provider started directly via tsx; Terraform reattaches
+ *                        via TF_REATTACH_PROVIDERS (the normal dev workflow)
+ *   2. Node SEA binary – self-contained binary built with `node --build-sea` (bin/)
+ *   3. Bun binary      – self-contained binary compiled with `bun --compile` (bin-bun/)
  *
  * Each suite starts a real DummyCloud API server, runs terraform plan/apply/
  * destroy against a real Terraform CLI, and verifies the API state at each step.
  *
  * Prerequisites
  *   • `terraform` CLI in PATH
- *   • SEA binary built (for suite 2):     node scripts/build-sea.mjs
+ *   • Node SEA binary built (suite 2): pnpm run build:binary
+ *   • Bun binary built     (suite 3): pnpm run build:binary:bun
  */
 
 import { describe, it, before, after } from "node:test";
@@ -35,6 +37,8 @@ const SDK_ROOT        = path.resolve(PROVIDER_ROOT, "..", "sdk");
 
 // terrably build outputs to bin/ by default (matches `terrably build --out bin`).
 const BIN_DIR         = path.join(PROVIDER_ROOT, "bin");
+// Bun binary lives in its own directory so both binaries coexist side-by-side.
+const BUN_BIN_DIR     = path.join(PROVIDER_ROOT, "bin-bun");
 
 // Use a fixed port offset to reduce collision risk; tests run sequentially.
 const BASE_API_PORT   = 19877;
@@ -76,9 +80,8 @@ async function apiGet(port: number, urlPath: string): Promise<unknown> {
 }
 
 /** Write a minimal Terraform config for the suite. */
-function writeTfConfig(dir: string, apiPort: number): void {
+function writeTfConfig(dir: string, apiPort: number, binDir: string = BIN_DIR): void {
   const overridesPath = path.join(dir, ".terraformrc");
-  const binDir        = BIN_DIR;
 
   fs.writeFileSync(overridesPath, `\
 provider_installation {
@@ -308,6 +311,48 @@ describe("provider: Node SEA binary", () => {
 
   it("full cycle: plan → apply → verify → destroy", async () => {
     await planApplyVerifyDestroy(tfDir, BASE_API_PORT + 1, "SEA");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 3 — Bun compiled binary (bin-bun/)
+//
+// The provider is compiled to a single self-contained executable by
+// `bun --compile`. No Node.js or Bun runtime is required at run time.
+// Build it once with: pnpm run build:binary:bun
+// ---------------------------------------------------------------------------
+
+describe("provider: Bun compiled binary", () => {
+  const ext       = process.platform === "win32" ? ".exe" : "";
+  const bunBinary = path.join(BUN_BIN_DIR, `terraform-provider-dummycloud${ext}`);
+  let api: ApiFixture;
+  let tfDir: string;
+
+  before(async () => {
+    assert.ok(
+      fs.existsSync(bunBinary),
+      `Bun binary not found at ${bunBinary}. Run: pnpm run build:binary:bun`
+    );
+
+    api   = await startApiServer(BASE_API_PORT + 2);
+    tfDir = fs.mkdtempSync(path.join(os.tmpdir(), "tf-e2e-bun-"));
+    writeTfConfig(tfDir, BASE_API_PORT + 2, BUN_BIN_DIR);
+  });
+
+  after(() => {
+    api.proc.kill();
+    fs.rmSync(tfDir, { recursive: true, force: true });
+  });
+
+  it("smoke test: binary exits non-zero when magic cookie is missing", () => {
+    assert.throws(
+      () => execFileSync(bunBinary, [], { stdio: "pipe", timeout: 3000 }),
+      /Command failed/
+    );
+  });
+
+  it("full cycle: plan → apply → verify → destroy", async () => {
+    await planApplyVerifyDestroy(tfDir, BASE_API_PORT + 2, "Bun");
   });
 });
 

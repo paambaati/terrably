@@ -11,6 +11,7 @@ tsconfig.tsbuildinfo
 # Compiled provider binaries (SEA)
 packages/reference-provider/bin-sea/
 packages/reference-provider/bin/terraform-provider-*
+packages/reference-provider/bin-bun/terraform-provider-*
 
 # Generated Terraform dev config (contains machine-specific absolute path)
 packages/reference-provider/tf-workspace/.terraformrc
