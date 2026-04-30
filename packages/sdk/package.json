@@ -45,7 +45,8 @@
     "lint": "oxlint --type-aware --type-check src/",
     "lint:fix": "oxlint --fix src/",
     "format": "oxfmt src/",
-    "test": "node --require tsx/cjs --test 'src/*.test.ts'",
+    "test": "node --require tsx/cjs --test 'src/*.test.ts' 'src/cli/commands/*.test.ts'",
+    "test:coverage": "node --require tsx/cjs --experimental-test-coverage --test 'src/*.test.ts' 'src/cli/commands/*.test.ts'",
     "prepublishOnly": "pnpm run build && pnpm run lint && pnpm run test"
   },
   "bin": {
