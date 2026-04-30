@@ -2086,6 +2086,7 @@ terrably publish [options]
   --github-release        Create GitHub Release and upload all assets (requires $GITHUB_TOKEN)
   --draft                 Create the release as a draft
   --tag <tag>             Git tag name (default: v{version})
+  --extra-assets          Additional files to be included in the release asset
 ```
 
 ### Required release asset layout [#required-release-asset-layout]
