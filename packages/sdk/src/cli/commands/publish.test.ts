@@ -258,10 +258,10 @@ void describe("publishCommand – option overrides", () => {
 });
 
 // ---------------------------------------------------------------------------
-// --extraAssets option
+// --include option
 // ---------------------------------------------------------------------------
 
-void describe("publishCommand – --extraAssets option", () => {
+void describe("publishCommand – --include option", () => {
   let tmpDir: string;
   let origCwd: string;
 
