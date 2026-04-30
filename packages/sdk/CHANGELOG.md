@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.15](https://github.com/paambaati/terrably/compare/v0.0.14...v0.0.15) (2026-04-30)
+
+
+### Features
+
+* **publish:** support including additional assets in publish ZIP ([d1c98b3](https://github.com/paambaati/terrably/commit/d1c98b3450e22f47790666db0fbfae116e437d73))
+* **publish:** support including additional assets in publish ZIP ([2adaf3c](https://github.com/paambaati/terrably/commit/2adaf3c171a6fb4f54c9e0ba3c93de098c94ebf2))
+
 ## [0.0.14](https://github.com/paambaati/terrably/compare/v0.0.13...v0.0.14) (2026-04-29)
 
 
