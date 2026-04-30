@@ -65,18 +65,38 @@ async function waitForApi(port: number, timeoutMs = 8_000): Promise<void> {
   throw new Error(`API on port ${port} not ready after ${timeoutMs}ms`);
 }
 
-/** GET a JSON endpoint, return parsed body. */
-async function apiGet(port: number, urlPath: string): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    http.get(`http://127.0.0.1:${port}${urlPath}`, (res) => {
-      let body = "";
-      res.on("data", (c: string) => (body += c));
-      res.on("end", () => {
-        try { resolve(JSON.parse(body)); }
-        catch (e) { reject(e); }
+/** GET a JSON endpoint, return parsed body.
+ *
+ * Retries on transient connection errors (ECONNRESET / ECONNREFUSED) that can
+ * occur when the provider binary is still tearing down its keep-alive
+ * connection to the API server right as the test tries to verify state.
+ */
+async function apiGet(port: number, urlPath: string, retries = 5): Promise<unknown> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await new Promise((resolve, reject) => {
+        http.get(`http://127.0.0.1:${port}${urlPath}`, (res) => {
+          let body = "";
+          res.on("data", (c: string) => (body += c));
+          res.on("end", () => {
+            try { resolve(JSON.parse(body)); }
+            catch (e) { reject(e); }
+          });
+          res.on("error", reject);
+        }).on("error", reject);
       });
-    }).on("error", reject);
-  });
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      const transient = code === "ECONNRESET" || code === "ECONNREFUSED" || code === "ETIMEDOUT";
+      if (transient && attempt < retries) {
+        await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  /* istanbul ignore next */
+  throw new Error("unreachable");
 }
 
 /** Write a minimal Terraform config for the suite. */

@@ -43,9 +43,16 @@ export async function newCommand(providerName: string, targetPath?: string): Pro
     providerCls:     `${toPascalCase(shortName)}Provider`,
     resourceCls:     `${toPascalCase(shortName)}Item`,
     absBinDir:       path.join(targetDir, "bin"),
-    // __dirname at runtime is dist/src/cli/commands/ — go up 4 levels to reach
-    // the package root, where package.json is always present in any npm install.
-    terrablyVersion: (JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../../package.json"), "utf8")) as { version: string }).version,
+    // __dirname at runtime (compiled) is dist/src/cli/commands/ — 4 levels up reaches the package root.
+    // __dirname under tsx (source) is src/cli/commands/ — 3 levels up reaches the package root.
+    // Try both so that `terrably new` works in both environments.
+    terrablyVersion: (JSON.parse(fs.readFileSync(
+      (() => {
+        const p4 = path.resolve(__dirname, "../../../../package.json");
+        return fs.existsSync(p4) ? p4 : path.resolve(__dirname, "../../../package.json");
+      })(),
+      "utf8"
+    )) as { version: string }).version,
   };
 
   const templatesDir = path.resolve(__dirname, "..", "templates");

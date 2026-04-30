@@ -52,6 +52,8 @@ export interface PublishOptions {
   githubRelease?: boolean;
   draft?: boolean;
   tag?: string;
+  /** Comma-separated list of extra files to upload as release assets (relative to provider root). Not included in SHA256SUMS. */
+  extraAssets?: string;
 }
 
 interface PlatformBinary {
@@ -397,6 +399,20 @@ export async function publishCommand(options: PublishOptions): Promise<void> {
   const outDir = path.resolve(providerRoot, options.out ?? "release");
   const protocolVersion = options.protocolVersion ?? "6.0";
 
+  // Resolve extra assets (comma-separated, relative to provider root)
+  const extraAssetPaths: string[] = (options.extraAssets ?? "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0)
+    .map((p) => path.resolve(providerRoot, p))
+    .filter((p) => {
+      if (!fs.existsSync(p)) {
+        process.stderr.write(`⚠️  Extra asset not found, skipping: ${p}\n`);
+        return false;
+      }
+      return true;
+    });
+
   process.stdout.write(`\n▶ Publishing ${baseName} version ${ver}\n`);
   process.stdout.write(`  Binaries:  ${binariesDir}\n`);
   process.stdout.write(`  Output:    ${outDir}\n\n`);
@@ -505,11 +521,12 @@ export async function publishCommand(options: PublishOptions): Promise<void> {
     );
     process.stdout.write(`  Release URL: ${release.html_url}\n`);
 
-    // Collect all assets: zips + manifest + checksums + sig
+    // Collect all assets: zips + manifest + checksums + sig + extra
     const allAssets = [
       ...assetFiles,
       checksumsPath,
       ...(fs.existsSync(sigPath) ? [sigPath] : []),
+      ...extraAssetPaths,
     ];
 
     process.stdout.write("\n▶ Uploading release assets...\n");

@@ -80,6 +80,7 @@ cli
   .option("--github-release",             "Create GitHub Release and upload all assets (requires $GITHUB_TOKEN)")
   .option("--draft",                      "Create release as draft (use with --github-release)")
   .option("--tag <tag>",                  "Git tag to use (default: v{version})")
+  .option("--include <paths>",            "Comma-separated list of files to upload as release assets (relative to provider root, e.g. tf-workspace/README.md)")
   .example("terrably publish --release-version 1.0.0")
   .example("terrably publish --release-version 1.0.0 --gpg-key you@example.com --github-release")
   .example("terrably publish --release-version 1.0.0 --binaries-dir dist/binaries --draft --github-release")
@@ -93,6 +94,7 @@ cli
     githubRelease?: boolean;
     draft?: boolean;
     tag?: string;
+    include?: string;
   }) => {
     await publishCommand({ ...options, version: options.releaseVersion });
   });
