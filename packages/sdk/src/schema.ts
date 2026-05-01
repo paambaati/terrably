@@ -135,7 +135,15 @@ export class NestedBlock {
   }
 
   semanticallyEqual(a: unknown, b: unknown): boolean {
-    return JSON.stringify(a) === JSON.stringify(b);
+    if (!Array.isArray(a) || !Array.isArray(b)) return JSON.stringify(a) === JSON.stringify(b);
+    if (a.length !== b.length) return false;
+    if (this.nestingMode === "set" || this.nestingMode === "map") {
+      // Order-insensitive: sort serialized elements before comparing.
+      const sa = (a as unknown[]).map((x) => JSON.stringify(x)).sort();
+      const sb = (b as unknown[]).map((x) => JSON.stringify(x)).sort();
+      return sa.every((v, i) => v === sb[i]);
+    }
+    return a.every((v, i) => JSON.stringify(v) === JSON.stringify((b as unknown[])[i]));
   }
 }
 
@@ -147,6 +155,8 @@ export interface BlockOptions {
   description?: string;
   descriptionKind?: DescriptionKind;
   deprecated?: boolean;
+  deprecationMessage?: string;
+  computed?: boolean;
 }
 
 export class Block {
@@ -155,6 +165,8 @@ export class Block {
   readonly description: string;
   readonly descriptionKind: DescriptionKind;
   readonly deprecated: boolean;
+  readonly deprecationMessage: string;
+  readonly computed: boolean;
 
   constructor(
     attributes: Attribute[] = [],
@@ -166,6 +178,8 @@ export class Block {
     this.description = opts.description ?? "";
     this.descriptionKind = opts.descriptionKind ?? "markdown";
     this.deprecated = opts.deprecated ?? false;
+    this.deprecationMessage = opts.deprecationMessage ?? "";
+    this.computed = opts.computed ?? false;
   }
 
   attrMap(): Record<string, Attribute> {
@@ -185,8 +199,8 @@ export class Block {
       descriptionKind:
         this.descriptionKind === "markdown" ? StringKind.MARKDOWN : StringKind.PLAIN,
       deprecated: this.deprecated,
-      deprecationMessage: "",
-      computed: false,
+      deprecationMessage: this.deprecationMessage,
+      computed: this.computed,
     };
   }
 }

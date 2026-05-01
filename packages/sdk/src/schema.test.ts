@@ -111,4 +111,76 @@ void describe("NestedBlock", () => {
     const pb = nb.toPb();
     assert.ok(pb.nesting);
   });
+
+  void describe("semanticallyEqual — SET nesting is order-insensitive", () => {
+    const inner = new Block([new Attribute("cidr", types.string())]);
+    const nb = new NestedBlock("networks", "set", inner);
+
+    void it("same order → equal", () => {
+      const a = [{ cidr: "10.0.0.0/8" }, { cidr: "192.168.0.0/16" }];
+      assert.ok(nb.semanticallyEqual(a, [...a]));
+    });
+
+    void it("different order → still equal for set", () => {
+      const a = [{ cidr: "10.0.0.0/8" }, { cidr: "192.168.0.0/16" }];
+      const b = [{ cidr: "192.168.0.0/16" }, { cidr: "10.0.0.0/8" }];
+      assert.ok(nb.semanticallyEqual(a, b));
+    });
+
+    void it("different content → not equal", () => {
+      const a = [{ cidr: "10.0.0.0/8" }];
+      const b = [{ cidr: "172.16.0.0/12" }];
+      assert.ok(!nb.semanticallyEqual(a, b));
+    });
+
+    void it("different length → not equal", () => {
+      const a = [{ cidr: "10.0.0.0/8" }, { cidr: "192.168.0.0/16" }];
+      const b = [{ cidr: "10.0.0.0/8" }];
+      assert.ok(!nb.semanticallyEqual(a, b));
+    });
+  });
+
+  void describe("semanticallyEqual — LIST nesting is order-sensitive", () => {
+    const inner = new Block([new Attribute("val", types.string())]);
+    const nb = new NestedBlock("items", "list", inner);
+
+    void it("same order → equal", () => {
+      const a = [{ val: "a" }, { val: "b" }];
+      assert.ok(nb.semanticallyEqual(a, [...a]));
+    });
+
+    void it("different order → NOT equal for list", () => {
+      const a = [{ val: "a" }, { val: "b" }];
+      const b = [{ val: "b" }, { val: "a" }];
+      assert.ok(!nb.semanticallyEqual(a, b));
+    });
+  });
+});
+
+void describe("BlockOptions — deprecationMessage and computed", () => {
+  void it("Block defaults deprecationMessage to empty string and computed to false", () => {
+    const b = new Block([]);
+    const pb = b.toPb()!;
+    assert.equal(pb.deprecationMessage, "");
+    assert.equal(pb.computed, false);
+  });
+
+  void it("Block.toPb() forwards deprecationMessage", () => {
+    const b = new Block([], [], { deprecated: true, deprecationMessage: "use new_block instead" });
+    const pb = b.toPb()!;
+    assert.equal(pb.deprecationMessage, "use new_block instead");
+    assert.equal(pb.deprecated, true);
+  });
+
+  void it("Block.toPb() forwards computed: true", () => {
+    const b = new Block([], [], { computed: true });
+    const pb = b.toPb()!;
+    assert.equal(pb.computed, true);
+  });
+
+  void it("Schema 4th blockOpts arg forwards deprecationMessage", () => {
+    const schema = new Schema([], [], 0, { deprecationMessage: "legacy resource" });
+    const pb = schema.toPb();
+    assert.equal(pb.block!.deprecationMessage, "legacy resource"); // block is always present
+  });
 });

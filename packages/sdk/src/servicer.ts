@@ -478,10 +478,12 @@ export class ProviderServicer {
     const prior = priorState!;
     const proposed = proposedState!;
 
+    const blockAttrs = block.blockMap();
     const changedFields = new Set<string>(
       Object.keys(proposed).filter((k) => {
-        if (!(k in attrs)) return false;
-        return !attrs[k].type.semanticallyEqual(prior[k], proposed[k]);
+        if (k in attrs) return !attrs[k].type.semanticallyEqual(prior[k], proposed[k]);
+        if (k in blockAttrs) return !blockAttrs[k].semanticallyEqual(prior[k], proposed[k]);
+        return false;
       })
     );
 
@@ -537,10 +539,14 @@ export class ProviderServicer {
       newState = null;
     } else if (priorState !== null && plannedState !== null) {
       // UPDATE
+      const applyAttrs = inst.getSchema().block.attrMap();
+      const applyBlockAttrs = inst.getSchema().block.blockMap();
       const changedFields = new Set(
-        Object.keys(plannedState).filter(
-          (k) => JSON.stringify(priorState[k]) !== JSON.stringify(plannedState[k])
-        )
+        Object.keys(plannedState).filter((k) => {
+          if (k in applyAttrs) return !applyAttrs[k].type.semanticallyEqual(priorState[k], plannedState[k]);
+          if (k in applyBlockAttrs) return !applyBlockAttrs[k].semanticallyEqual(priorState[k], plannedState[k]);
+          return JSON.stringify(priorState[k]) !== JSON.stringify(plannedState[k]);
+        })
       );
       newState = await inst.update(
         { diagnostics: diags, typeName: req.typeName, changedFields },
