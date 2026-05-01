@@ -41,3 +41,9 @@ terrably build                         Compile + bundle + produce a shippable bi
 terrably check                         Run correctness checks against the provider
 terrably publish                       Package, sign, and upload a release
 ```
+
+---
+
+## Credits
+
+This project would not be possible without studying https://github.com/hfern/tf, so thank you [@hfern](https://github.com/hfern).
