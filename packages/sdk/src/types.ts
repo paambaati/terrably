@@ -1,7 +1,7 @@
 /**
  * TfType system – mirrors hfern/tf types.py, adapted for TypeScript.
  *
- * Every concrete type provides:
+ * Every concrete type provides –
  *   encode(value)  → wire-safe representation (numbers, strings, plain objects)
  *   decode(value)  → JS-idiomatic representation
  *   semanticallyEqual(a, b) → whether two decoded values represent the same state
