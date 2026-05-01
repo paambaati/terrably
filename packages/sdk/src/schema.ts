@@ -199,9 +199,9 @@ export class Schema {
   readonly version: number;
   readonly block: Block;
 
-  constructor(attributes: Attribute[] = [], blockTypes: NestedBlock[] = [], version = 0) {
+  constructor(attributes: Attribute[] = [], blockTypes: NestedBlock[] = [], version = 0, blockOpts: BlockOptions = {}) {
     this.version = version;
-    this.block = new Block(attributes, blockTypes);
+    this.block = new Block(attributes, blockTypes, blockOpts);
   }
 
   toPb(): PbSchema {
