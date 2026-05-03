@@ -4,7 +4,7 @@ export type { ServeOptions } from "./serve.js";
 
 export { ProviderServicer } from "./servicer.js";
 
-export { Schema, Attribute, NestedBlock, Block } from "./schema.js";
+export { Schema, Attribute, NestedBlock, Block, encodeBlock, encodeBlockPreserving, decodeBlock } from "./schema.js";
 export type { State, AttributeOptions, NestedBlockOptions, BlockOptions, NestMode, DescriptionKind } from "./schema.js";
 
 export type {

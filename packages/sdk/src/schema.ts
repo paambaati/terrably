@@ -5,10 +5,6 @@ import type { TfType } from "./types.js";
 
 export type DescriptionKind = "plain" | "markdown";
 
-// ---------------------------------------------------------------------------
-// Attribute
-// ---------------------------------------------------------------------------
-
 export interface AttributeOptions {
   description?: string;
   descriptionKind?: DescriptionKind;
@@ -74,10 +70,6 @@ export class Attribute {
     };
   }
 }
-
-// ---------------------------------------------------------------------------
-// NestedBlock
-// ---------------------------------------------------------------------------
 
 export type NestMode = "single" | "list" | "set" | "map" | "group";
 
@@ -147,10 +139,6 @@ export class NestedBlock {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Block
-// ---------------------------------------------------------------------------
-
 export interface BlockOptions {
   description?: string;
   descriptionKind?: DescriptionKind;
@@ -205,10 +193,6 @@ export class Block {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Schema (top-level resource/provider schema)
-// ---------------------------------------------------------------------------
-
 export class Schema {
   readonly version: number;
   readonly block: Block;
@@ -226,10 +210,6 @@ export class Schema {
   }
 }
 
-// ---------------------------------------------------------------------------
-// State encode/decode helpers (used by the servicer)
-// ---------------------------------------------------------------------------
-
 export type State = Record<string, unknown>;
 
 export function encodeBlock(block: Block, state: State | null): State | null {
@@ -242,6 +222,47 @@ export function encodeBlock(block: Block, state: State | null): State | null {
       out[k] = attrs[k].type.encode(v);
     } else if (k in blocks) {
       out[k] = blocks[k].encode(v);
+    }
+  }
+  return out;
+}
+
+/**
+ * Like encodeBlock, but reuses the raw prior-encoded bytes for any field that
+ * is semantically unchanged. This prevents spurious msgpack/JSON diffs when the
+ * same logical value is serialised differently (e.g. JSON with keys in a different
+ * order) — mirroring the behaviour of hfern/tf's `_encode_state_d`.
+ */
+export function encodeBlockPreserving(
+  block: Block,
+  state: State | null,
+  priorRaw: State | null
+): State | null {
+  if (state === null) return null;
+  const out: State = {};
+  const attrs = block.attrMap();
+  const blocks = block.blockMap();
+  for (const [k, v] of Object.entries(state)) {
+    if (k in attrs) {
+      if (
+        priorRaw !== null &&
+        k in priorRaw &&
+        attrs[k].type.semanticallyEqual(attrs[k].type.decode(priorRaw[k]), v)
+      ) {
+        out[k] = priorRaw[k]; // preserve prior wire bytes — no semantic change
+      } else {
+        out[k] = attrs[k].type.encode(v);
+      }
+    } else if (k in blocks) {
+      if (
+        priorRaw !== null &&
+        k in priorRaw &&
+        blocks[k].semanticallyEqual(blocks[k].decode(priorRaw[k]), v)
+      ) {
+        out[k] = priorRaw[k];
+      } else {
+        out[k] = blocks[k].encode(v);
+      }
     }
   }
   return out;

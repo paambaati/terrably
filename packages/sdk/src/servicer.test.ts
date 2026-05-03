@@ -317,3 +317,229 @@ void describe("ApplyResourceChange — NormalizedJson semantic equality", () => 
       "semantically identical JSON should not appear as changed in apply");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Helpers for panic / error-handling tests
+// ---------------------------------------------------------------------------
+
+import { readDynamicValue } from "./encoding.js";
+
+function makePanicResourceClass(schema: Schema, panicOn: "create" | "read" | "update" | "delete" | "plan" | "import"): ResourceClass {
+  return class PanicResource implements Resource {
+    constructor(_provider: Provider) {}
+    getName() { return "item"; }
+    getSchema() { return schema; }
+    async create(_ctx: CreateContext, planned: unknown) {
+      if (panicOn === "create") throw new Error("boom in create");
+      return planned as Record<string, unknown>;
+    }
+    async read(_ctx: ReadContext, current: unknown) {
+      if (panicOn === "read") throw new Error("boom in read");
+      return current as Record<string, unknown>;
+    }
+    async update(_ctx: UpdateContext, _prior: unknown, planned: unknown) {
+      if (panicOn === "update") throw new Error("boom in update");
+      return planned as Record<string, unknown>;
+    }
+    async delete(_ctx: DeleteContext) {
+      if (panicOn === "delete") throw new Error("boom in delete");
+    }
+    async plan(_ctx: PlanContext, _prior: unknown, planned: unknown) {
+      if (panicOn === "plan") throw new Error("boom in plan");
+      return planned as Record<string, unknown>;
+    }
+    async import(_ctx: ImportContext, _id: string) {
+      if (panicOn === "import") throw new Error("boom in import");
+      return null;
+    }
+  } as unknown as ResourceClass;
+}
+
+import type { ImportContext } from "./interfaces.js";
+
+// ---------------------------------------------------------------------------
+// 7. Exception handling: errors become diagnostics, not crashed plugins
+// ---------------------------------------------------------------------------
+
+void describe("Exception handling — panics become error diagnostics", () => {
+  const schema = new Schema([new Attribute("name", types.string(), { required: true })]);
+
+  void it("create() throwing returns error diagnostic, not a crash", async () => {
+    const svc = new ProviderServicer(makeProvider(makePanicResourceClass(schema, "create")));
+    const resp = await svc.ApplyResourceChange({
+      typeName: "stub_item",
+      priorState: dv(null),
+      plannedState: dv({ name: "r1" }),
+      config: dv({ name: "r1" }),
+      plannedPrivate: new Uint8Array(),
+      plannedIdentity: undefined,
+      providerMeta: dv({}),
+    }, null);
+    const diags = resp.diagnostics ?? [];
+    assert.ok(diags.length > 0, "expected error diagnostic");
+    assert.match(String(diags[0]!.summary), /panicked|Provider/i);
+    assert.match(String(diags[0]!.detail ?? ""), /boom in create/);
+  });
+
+  void it("read() throwing returns error diagnostic and preserves prior state", async () => {
+    const svc = new ProviderServicer(makeProvider(makePanicResourceClass(schema, "read")));
+    const prior = dv({ name: "r1" });
+    const resp = await svc.ReadResource({
+      typeName: "stub_item",
+      currentState: prior,
+      private: new Uint8Array(),
+      providerMeta: dv({}),
+      clientCapabilities: undefined,
+      currentIdentity: undefined,
+    }, null);
+    const diags = resp.diagnostics ?? [];
+    assert.ok(diags.length > 0, "expected error diagnostic");
+    assert.match(String(diags[0]!.detail ?? ""), /boom in read/);
+    // Prior state must be preserved — not null — to prevent a spurious destroy plan
+    assert.ok(resp.newState !== undefined, "newState should not be undefined");
+    const returnedState = readDynamicValue(resp.newState as { msgpack: Uint8Array; json: Uint8Array });
+    assert.deepEqual(returnedState, { name: "r1" });
+  });
+
+  void it("update() throwing returns error diagnostic and preserves prior state", async () => {
+    const svc = new ProviderServicer(makeProvider(makePanicResourceClass(schema, "update")));
+    const prior = dv({ name: "r1" });
+    const resp = await svc.ApplyResourceChange({
+      typeName: "stub_item",
+      priorState: prior,
+      plannedState: dv({ name: "r2" }),
+      config: dv({ name: "r2" }),
+      plannedPrivate: new Uint8Array(),
+      plannedIdentity: undefined,
+      providerMeta: dv({}),
+    }, null);
+    const diags = resp.diagnostics ?? [];
+    assert.ok(diags.length > 0, "expected error diagnostic");
+    assert.match(String(diags[0]!.detail ?? ""), /boom in update/);
+    const returnedState = readDynamicValue(resp.newState as { msgpack: Uint8Array; json: Uint8Array });
+    assert.deepEqual(returnedState, { name: "r1" }, "prior state should be returned on error");
+  });
+
+  void it("plan() throwing returns error diagnostic", async () => {
+    const svc = new ProviderServicer(makeProvider(makePanicResourceClass(schema, "plan")));
+    const prior = dv({ name: "r1" });
+    const proposed = dv({ name: "r2" });
+    const resp = await svc.PlanResourceChange({
+      typeName: "stub_item",
+      priorState: prior,
+      proposedNewState: proposed,
+      config: proposed,
+      priorPrivate: new Uint8Array(),
+      plannedPrivate: new Uint8Array(),
+      priorIdentity: undefined,
+      providerMeta: dv({}),
+      clientCapabilities: undefined,
+    }, null);
+    const diags = resp.diagnostics ?? [];
+    assert.ok(diags.length > 0, "expected error diagnostic");
+    assert.match(String(diags[0]!.detail ?? ""), /boom in plan/);
+  });
+
+  void it("import() throwing returns error diagnostic", async () => {
+    const svc = new ProviderServicer(makeProvider(makePanicResourceClass(schema, "import")));
+    const resp = await svc.ImportResourceState({
+      typeName: "stub_item",
+      id: "abc",
+      clientCapabilities: undefined,
+      identity: undefined,
+    }, null);
+    const diags = resp.diagnostics ?? [];
+    assert.ok(diags.length > 0, "expected error diagnostic");
+    assert.match(String(diags[0]!.detail ?? ""), /boom in import/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Encoding preservation — read() returning same logical value preserves wire bytes
+// ---------------------------------------------------------------------------
+
+void describe("encodeBlockPreserving — no spurious diffs on read", () => {
+  void it("read() returning semantically identical NormalizedJson preserves wire bytes", async () => {
+    // Prior state: config stored as '{"b":2,"a":1}'
+    // read() returns the parsed object, re-encoded as '{"a":1,"b":2}'
+    // encodeBlockPreserving should use the original bytes.
+
+    const schema = new Schema([
+      new Attribute("name",   types.string(),        { required: true }),
+      new Attribute("config", types.normalizedJson(), { optional: true }),
+    ]);
+
+    const originalJsonBytes = JSON.stringify({ b: 2, a: 1 }); // the wire-level bytes
+
+    let returnedFromRead: unknown = null;
+
+    const resCls: ResourceClass = class implements Resource {
+      constructor(_p: Provider) {}
+      getName() { return "item"; }
+      getSchema() { return schema; }
+      async create(_ctx: CreateContext, p: unknown) { return p as Record<string, unknown>; }
+      async delete(_ctx: DeleteContext) {}
+      async update(_ctx: UpdateContext, _p: unknown, pl: unknown) { return pl as Record<string, unknown>; }
+      async read(_ctx: ReadContext, current: unknown) {
+        // Return same logical value — read() returns decoded object, not re-encoded string
+        return current as Record<string, unknown>;
+      }
+    } as unknown as ResourceClass;
+
+    const svc = new ProviderServicer(makeProvider(resCls));
+    const prior = dv({ name: "r1", config: originalJsonBytes });
+
+    const resp = await svc.ReadResource({
+      typeName: "stub_item",
+      currentState: prior,
+      private: new Uint8Array(),
+      providerMeta: dv({}),
+      clientCapabilities: undefined,
+      currentIdentity: undefined,
+    }, null);
+
+    returnedFromRead = readDynamicValue(resp.newState as { msgpack: Uint8Array; json: Uint8Array });
+    const returnedConfig = (returnedFromRead as Record<string, unknown>)["config"];
+
+    // The wire bytes must be the original (not re-sorted) to prevent spurious diff
+    assert.equal(returnedConfig, originalJsonBytes,
+      "wire bytes should be preserved when value is semantically unchanged");
+  });
+
+  void it("read() returning changed value uses new encoding", async () => {
+    const schema = new Schema([
+      new Attribute("name",   types.string(),        { required: true }),
+      new Attribute("config", types.normalizedJson(), { optional: true }),
+    ]);
+
+    const resCls: ResourceClass = class implements Resource {
+      constructor(_p: Provider) {}
+      getName() { return "item"; }
+      getSchema() { return schema; }
+      async create(_ctx: CreateContext, p: unknown) { return p as Record<string, unknown>; }
+      async delete(_ctx: DeleteContext) {}
+      async update(_ctx: UpdateContext, _p: unknown, pl: unknown) { return pl as Record<string, unknown>; }
+      async read(_ctx: ReadContext, _current: unknown) {
+        // API returned a different config value
+        return { name: "r1", config: { x: 99 } };
+      }
+    } as unknown as ResourceClass;
+
+    const svc = new ProviderServicer(makeProvider(resCls));
+    const prior = dv({ name: "r1", config: JSON.stringify({ a: 1 }) });
+
+    const resp = await svc.ReadResource({
+      typeName: "stub_item",
+      currentState: prior,
+      private: new Uint8Array(),
+      providerMeta: dv({}),
+      clientCapabilities: undefined,
+      currentIdentity: undefined,
+    }, null);
+
+    const returnedState = readDynamicValue(resp.newState as { msgpack: Uint8Array; json: Uint8Array });
+    const returnedConfig = (returnedState as Record<string, unknown>)["config"];
+    // Should be normalised {"x":99}
+    assert.equal(returnedConfig, JSON.stringify({ x: 99 }), "changed value should use new encoding");
+  });
+});
