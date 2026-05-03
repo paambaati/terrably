@@ -1,6 +1,6 @@
 ---
 title: Testing
-description: Unit testing resource logic with node:test, and running the full end-to-end suite against a real Terraform binary.
+description: Unit testing resource logic with node:test.
 ---
 
 ## Unit testing
@@ -70,55 +70,4 @@ API_PID=$!
 node --test dist/tests/server.test.js
 
 kill $API_PID
-```
-
----
-
-## End-to-end tests
-
-The E2E tests use the built-in `node:test` runner. Three suites run against a real Terraform binary –
-
-| Suite | Provider mode | Binary |
-|---|---|---|
-| `provider: dev mode` | `tsx` + [`TF_REATTACH_PROVIDERS`](https://developer.hashicorp.com/terraform/plugin/debugging#running-terraform-with-a-provider-in-debug-mode) | TypeScript source |
-| `provider: Node SEA binary` | standalone binary (Node.js SEA) | `bin/` |
-| `provider: Bun compiled binary` | standalone binary (`bun --compile`) | `bin-bun/` |
-
-<Callout type="warn">
-The binary suites require the provider binaries to be built first. They also require `terraform` to be on your `PATH`. The Bun suite is skipped automatically if `bun` is not on your `PATH`.
-</Callout>
-
-### Prerequisites
-
-<Steps>
-<Step>
-
-### Build the reference provider binaries
-
-```bash
-# Node SEA binary → bin/
-pnpm run build:binary
-
-# Bun compiled binary → bin-bun/ (requires bun in PATH)
-pnpm run build:binary:bun
-```
-
-The `pretest` script runs `ensure-binary.mjs` automatically before `pnpm run test`, so you only need to run these manually when you change provider source.
-
-</Step>
-<Step>
-
-### Confirm Terraform is available
-
-```bash
-terraform version
-```
-
-</Step>
-</Steps>
-
-### Run the end-to-end tests
-
-```bash
-pnpm run test
 ```
