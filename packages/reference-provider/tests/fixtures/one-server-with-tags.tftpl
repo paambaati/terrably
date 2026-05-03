@@ -1,0 +1,15 @@
+terraform {
+  required_providers {
+    dummycloud = { source = "example/dummycloud" }
+  }
+}
+
+provider "dummycloud" {
+  api_url = "http://127.0.0.1:{{API_PORT}}"
+}
+
+resource "dummycloud_server" "web" {
+  name = "web-01"
+  size = "small"
+  tags = {{TAGS_EXPR}}
+}
