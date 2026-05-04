@@ -410,7 +410,7 @@ describe("provider: Bun compiled binary", () => {
 
     api   = await startApiServer(BASE_API_PORT + 2);
     tfDir = fs.mkdtempSync(path.join(os.tmpdir(), "tf-e2e-bun-"));
-    writeTfConfig(tfDir, BASE_API_PORT + 2, BUN_BIN_DIR);
+    writeTfConfig(tfDir, BASE_API_PORT + 2, "two-servers.tftpl", BUN_BIN_DIR);
   });
 
   after(() => {
