@@ -194,7 +194,7 @@ void describe("PlanResourceChange — NormalizedJson semantic equality", () => {
       plannedPrivate: new Uint8Array(),
     }, null);
 
-    assert.ok(recorder.planChangedFields !== null);
+    assert.ok(recorder.planChangedFields !== null, "plan() should have been called");
     assert.ok(!recorder.planChangedFields!.has("config"),
       "semantically identical JSON should not appear as changed");
   });
@@ -378,8 +378,8 @@ void describe("Exception handling — panics become error diagnostics", () => {
     }, null);
     const diags = resp.diagnostics ?? [];
     assert.ok(diags.length > 0, "expected error diagnostic");
-    assert.match(String(diags[0]!.summary), /panicked|Provider/i);
-    assert.match(String(diags[0]!.detail ?? ""), /boom in create/);
+    assert.match(String(diags[0]!.summary), /panicked|Provider/i, "diagnostic summary should mention a panic or provider error");
+    assert.match(String(diags[0]!.detail ?? ""), /boom in create/, "diagnostic detail should include the original error message");
   });
 
   void it("read() throwing returns error diagnostic and preserves prior state", async () => {
@@ -395,11 +395,11 @@ void describe("Exception handling — panics become error diagnostics", () => {
     }, null);
     const diags = resp.diagnostics ?? [];
     assert.ok(diags.length > 0, "expected error diagnostic");
-    assert.match(String(diags[0]!.detail ?? ""), /boom in read/);
+    assert.match(String(diags[0]!.detail ?? ""), /boom in read/, "diagnostic detail should include the original error message");
     // Prior state must be preserved — not null — to prevent a spurious destroy plan
     assert.ok(resp.newState !== undefined, "newState should not be undefined");
     const returnedState = readDynamicValue(resp.newState as { msgpack: Uint8Array; json: Uint8Array });
-    assert.deepEqual(returnedState, { name: "r1" });
+    assert.deepEqual(returnedState, { name: "r1" }, "prior state should be returned on read error");
   });
 
   void it("update() throwing returns error diagnostic and preserves prior state", async () => {
@@ -416,7 +416,7 @@ void describe("Exception handling — panics become error diagnostics", () => {
     }, null);
     const diags = resp.diagnostics ?? [];
     assert.ok(diags.length > 0, "expected error diagnostic");
-    assert.match(String(diags[0]!.detail ?? ""), /boom in update/);
+    assert.match(String(diags[0]!.detail ?? ""), /boom in update/, "diagnostic detail should include the original error message");
     const returnedState = readDynamicValue(resp.newState as { msgpack: Uint8Array; json: Uint8Array });
     assert.deepEqual(returnedState, { name: "r1" }, "prior state should be returned on error");
   });
@@ -438,7 +438,7 @@ void describe("Exception handling — panics become error diagnostics", () => {
     }, null);
     const diags = resp.diagnostics ?? [];
     assert.ok(diags.length > 0, "expected error diagnostic");
-    assert.match(String(diags[0]!.detail ?? ""), /boom in plan/);
+    assert.match(String(diags[0]!.detail ?? ""), /boom in plan/, "diagnostic detail should include the original error message");
   });
 
   void it("import() throwing returns error diagnostic", async () => {
@@ -451,7 +451,7 @@ void describe("Exception handling — panics become error diagnostics", () => {
     }, null);
     const diags = resp.diagnostics ?? [];
     assert.ok(diags.length > 0, "expected error diagnostic");
-    assert.match(String(diags[0]!.detail ?? ""), /boom in import/);
+    assert.match(String(diags[0]!.detail ?? ""), /boom in import/, "diagnostic detail should include the original error message");
   });
 });
 
@@ -580,7 +580,7 @@ void describe("ObjectAttribute in PlanResourceChange — changedFields", () => {
       plannedPrivate: new Uint8Array(),
     }, null);
 
-    assert.ok(recorder.planChangedFields !== null);
+    assert.ok(recorder.planChangedFields !== null, "plan() should have been called");
     assert.ok(recorder.planChangedFields!.has("meta"),
       "changed nested field should put 'meta' in changedFields");
   });

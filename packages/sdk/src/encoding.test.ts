@@ -32,33 +32,33 @@ void describe("readDynamicValue", () => {
   void it("decodes a simple msgpack object", () => {
     const dv = dvMsgpack({ name: "hello", count: 42 });
     const result = readDynamicValue(dv);
-    assert.deepEqual(result, { name: "hello", count: 42 });
+    assert.deepEqual(result, { name: "hello", count: 42 }, "should decode msgpack object fields correctly");
   });
 
   void it("decodes from JSON bytes as fallback when msgpack is empty", () => {
     const dv = dvJson({ foo: "bar" });
     const result = readDynamicValue(dv);
-    assert.deepEqual(result, { foo: "bar" });
+    assert.deepEqual(result, { foo: "bar" }, "should fall back to JSON bytes when msgpack is empty");
   });
 
   void it("returns null when both msgpack and json are empty", () => {
     const dv = { msgpack: new Uint8Array(), json: new Uint8Array() };
-    assert.equal(readDynamicValue(dv), null);
+    assert.equal(readDynamicValue(dv), null, "should return null when both msgpack and json are empty");
   });
 
   void it("returns null when msgpack encodes null", () => {
     const dv = dvMsgpack(null);
-    assert.equal(readDynamicValue(dv), null);
+    assert.equal(readDynamicValue(dv), null, "should return null when msgpack encodes null");
   });
 
   void it("preserves string values", () => {
     const dv = dvMsgpack({ id: "abc-123" });
-    assert.equal((readDynamicValue(dv) as Record<string, unknown>)["id"], "abc-123");
+    assert.equal((readDynamicValue(dv) as Record<string, unknown>)["id"], "abc-123", "should preserve string field value");
   });
 
   void it("preserves numeric values", () => {
     const dv = dvMsgpack({ count: 7 });
-    assert.equal((readDynamicValue(dv) as Record<string, unknown>)["count"], 7);
+    assert.equal((readDynamicValue(dv) as Record<string, unknown>)["count"], 7, "should preserve numeric field value");
   });
 
   void it("decodes the Unknown sentinel from extension type 0", () => {
@@ -78,7 +78,7 @@ void describe("readDynamicValue", () => {
       json: new Uint8Array(),
     };
     const result = readDynamicValue(dv) as Record<string, unknown>;
-    assert.equal(result["status"], Unknown);
+    assert.equal(result["status"], Unknown, "extension type 0 should decode to the Unknown sentinel");
   });
 });
 
@@ -97,24 +97,24 @@ void describe("toDynamicValue", () => {
 
   void it("encodes null", () => {
     const dv = toDynamicValue(null);
-    assert.ok(dv.msgpack.length > 0);
-    assert.equal(readDynamicValue(dv), null);
+    assert.ok(dv.msgpack.length > 0, "msgpack bytes should be non-empty when encoding null");
+    assert.equal(readDynamicValue(dv), null, "round-tripping null should yield null");
   });
 
   void it("round-trips a nested object", () => {
     const state = { id: "x", tags: ["a", "b"], meta: { k: "v" } };
     const dv = toDynamicValue(state as Record<string, unknown>);
-    assert.deepEqual(readDynamicValue(dv), state);
+    assert.deepEqual(readDynamicValue(dv), state, "nested object should round-trip through encode→decode");
   });
 
   void it("round-trips the Unknown sentinel", () => {
     const dv = toDynamicValue({ pending: Unknown as unknown } as Record<string, unknown>);
     const back = readDynamicValue(dv) as Record<string, unknown>;
-    assert.equal(back["pending"], Unknown);
+    assert.equal(back["pending"], Unknown, "Unknown sentinel should survive encode→decode round-trip");
   });
 
   void it("json field is always an empty Uint8Array on output", () => {
     const dv = toDynamicValue({ x: 1 });
-    assert.equal(dv.json.length, 0);
+    assert.equal(dv.json.length, 0, "json field should always be an empty Uint8Array on toDynamicValue output");
   });
 });

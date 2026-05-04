@@ -91,7 +91,8 @@ void describe("publishCommand – single binary (local output)", () => {
 
   void it("creates manifest.json", () => {
     assert.ok(
-      fs.existsSync(path.join(tmpDir, "release", "terraform-provider-test_1.2.3_manifest.json"))
+      fs.existsSync(path.join(tmpDir, "release", "terraform-provider-test_1.2.3_manifest.json")),
+      "manifest.json should be created in the release directory"
     );
   });
 
@@ -99,19 +100,20 @@ void describe("publishCommand – single binary (local output)", () => {
     const manifest = JSON.parse(
       fs.readFileSync(path.join(tmpDir, "release", "terraform-provider-test_1.2.3_manifest.json"), "utf8")
     ) as { version: number; metadata: { protocol_versions: string[] } };
-    assert.equal(manifest.version, 1);
+    assert.equal(manifest.version, 1, "manifest version should be 1");
   });
 
   void it("manifest.json defaults to protocol version 6.0", () => {
     const manifest = JSON.parse(
       fs.readFileSync(path.join(tmpDir, "release", "terraform-provider-test_1.2.3_manifest.json"), "utf8")
     ) as { version: number; metadata: { protocol_versions: string[] } };
-    assert.deepEqual(manifest.metadata.protocol_versions, ["6.0"]);
+    assert.deepEqual(manifest.metadata.protocol_versions, ["6.0"], "protocol_versions should default to ['6.0']");
   });
 
   void it("creates SHA256SUMS", () => {
     assert.ok(
-      fs.existsSync(path.join(tmpDir, "release", "terraform-provider-test_1.2.3_SHA256SUMS"))
+      fs.existsSync(path.join(tmpDir, "release", "terraform-provider-test_1.2.3_SHA256SUMS")),
+      "SHA256SUMS file should be created"
     );
   });
 
@@ -146,7 +148,8 @@ void describe("publishCommand – single binary (local output)", () => {
 
   void it("creates a zip archive for the binary", () => {
     assert.ok(
-      fs.existsSync(path.join(tmpDir, "release", "terraform-provider-test_1.2.3_linux_amd64.zip"))
+      fs.existsSync(path.join(tmpDir, "release", "terraform-provider-test_1.2.3_linux_amd64.zip")),
+      "zip archive should be created for the binary"
     );
   });
 });
@@ -177,24 +180,24 @@ void describe("publishCommand – multiple platform binaries", () => {
   });
 
   void it("creates a zip for linux_amd64", () => {
-    assert.ok(fs.existsSync(path.join(tmpDir, "release", "terraform-provider-multi_2.0.0_linux_amd64.zip")));
+    assert.ok(fs.existsSync(path.join(tmpDir, "release", "terraform-provider-multi_2.0.0_linux_amd64.zip")), "linux_amd64 zip should be created");
   });
 
   void it("creates a zip for darwin_arm64", () => {
-    assert.ok(fs.existsSync(path.join(tmpDir, "release", "terraform-provider-multi_2.0.0_darwin_arm64.zip")));
+    assert.ok(fs.existsSync(path.join(tmpDir, "release", "terraform-provider-multi_2.0.0_darwin_arm64.zip")), "darwin_arm64 zip should be created");
   });
 
   void it("creates a zip for windows_amd64", () => {
-    assert.ok(fs.existsSync(path.join(tmpDir, "release", "terraform-provider-multi_2.0.0_windows_amd64.zip")));
+    assert.ok(fs.existsSync(path.join(tmpDir, "release", "terraform-provider-multi_2.0.0_windows_amd64.zip")), "windows_amd64 zip should be created");
   });
 
   void it("SHA256SUMS lists all three zips", () => {
     const content = fs.readFileSync(
       path.join(tmpDir, "release", "terraform-provider-multi_2.0.0_SHA256SUMS"), "utf8"
     );
-    assert.ok(content.includes("terraform-provider-multi_2.0.0_linux_amd64.zip"));
-    assert.ok(content.includes("terraform-provider-multi_2.0.0_darwin_arm64.zip"));
-    assert.ok(content.includes("terraform-provider-multi_2.0.0_windows_amd64.zip"));
+    assert.ok(content.includes("terraform-provider-multi_2.0.0_linux_amd64.zip"), "SHA256SUMS should list the linux_amd64 zip");
+    assert.ok(content.includes("terraform-provider-multi_2.0.0_darwin_arm64.zip"), "SHA256SUMS should list the darwin_arm64 zip");
+    assert.ok(content.includes("terraform-provider-multi_2.0.0_windows_amd64.zip"), "SHA256SUMS should list the windows_amd64 zip");
   });
 });
 
@@ -226,13 +229,14 @@ void describe("publishCommand – option overrides", () => {
     const manifest = JSON.parse(
       fs.readFileSync(path.join(tmpDir, "release-proto5", "terraform-provider-opts_3.0.0_manifest.json"), "utf8")
     ) as { metadata: { protocol_versions: string[] } };
-    assert.deepEqual(manifest.metadata.protocol_versions, ["5.0"]);
+    assert.deepEqual(manifest.metadata.protocol_versions, ["5.0"], "protocol_versions should use the custom value");
   });
 
   void it("uses version from options over package.json", async () => {
     await publishCommand({ version: "9.9.9", githubRelease: false, out: "release-ver" });
     assert.ok(
-      fs.existsSync(path.join(tmpDir, "release-ver", "terraform-provider-opts_9.9.9_manifest.json"))
+      fs.existsSync(path.join(tmpDir, "release-ver", "terraform-provider-opts_9.9.9_manifest.json")),
+      "manifest filename should use the overridden version"
     );
   });
 
@@ -244,7 +248,8 @@ void describe("publishCommand – option overrides", () => {
       out: "release-name",
     });
     assert.ok(
-      fs.existsSync(path.join(tmpDir, "release-name", "terraform-provider-custom_3.0.0_manifest.json"))
+      fs.existsSync(path.join(tmpDir, "release-name", "terraform-provider-custom_3.0.0_manifest.json")),
+      "manifest filename should use the overridden provider name"
     );
   });
 
@@ -252,7 +257,8 @@ void describe("publishCommand – option overrides", () => {
     // tag only affects the GitHub release; locally we just verify no crash
     await publishCommand({ githubRelease: false, out: "release-tag", tag: "v99.0.0" });
     assert.ok(
-      fs.existsSync(path.join(tmpDir, "release-tag", "terraform-provider-opts_3.0.0_manifest.json"))
+      fs.existsSync(path.join(tmpDir, "release-tag", "terraform-provider-opts_3.0.0_manifest.json")),
+      "custom tag option should not affect local output filenames"
     );
   });
 });
@@ -333,7 +339,7 @@ void describe("publishCommand – error cases", () => {
     } catch (e) {
       if (!(e instanceof ProcessExitError)) throw e;
     } finally {
-      assert.equal(restore(), 1);
+      assert.equal(restore(), 1, "exit code should be 1 when no package.json and no --name");
     }
   });
 
@@ -367,7 +373,7 @@ void describe("publishCommand – error cases", () => {
       if (!(e instanceof ProcessExitError)) throw e;
     } finally {
       if (savedToken !== undefined) process.env["GITHUB_TOKEN"] = savedToken;
-      assert.equal(restore(), 1);
+      assert.equal(restore(), 1, "exit code should be 1 when GITHUB_TOKEN is missing");
     }
   });
 });
