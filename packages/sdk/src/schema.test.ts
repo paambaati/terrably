@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Attribute, Block, Schema, NestedBlock } from "./schema.js";
-import { types } from "./types.js";
+import { Attribute, Block, Schema, NestedBlock, ObjectAttribute, TfObject, encodeBlock, decodeBlock, encodeBlockPreserving } from "./schema.js";
+import { types, Unknown } from "./types.js";
 
 void describe("Attribute", () => {
   void it("stores name and type", () => {
@@ -182,5 +182,327 @@ void describe("BlockOptions — deprecationMessage and computed", () => {
     const schema = new Schema([], [], 0, { deprecationMessage: "legacy resource" });
     const pb = schema.toPb();
     assert.equal(pb.block!.deprecationMessage, "legacy resource"); // block is always present
+  });
+});
+
+/** Two-field object type used across many tests below. */
+function metadataFields() {
+  return [
+    new Attribute("owner",       types.string(), { optional: true, computed: true }),
+    new Attribute("environment", types.string(), { optional: true, computed: true }),
+  ];
+}
+
+void describe("ObjectAttribute — toPb()", () => {
+  void it("sets nestedType and leaves type empty", () => {
+    const oa = new ObjectAttribute("metadata", metadataFields(), "single", { optional: true });
+    const pb = oa.toPb();
+    assert.equal(pb.name, "metadata");
+    assert.ok(pb.nestedType, "nestedType should be populated");
+    assert.equal(pb.type.length, 0, "type bytes should be empty when nestedType is set");
+  });
+
+  void it("nestedType.nesting is SINGLE (1) for \"single\" mode", () => {
+    const oa = new ObjectAttribute("m", metadataFields(), "single");
+    assert.equal(oa.toPb().nestedType!.nesting, 1 /* SINGLE */);
+  });
+
+  void it("nestedType.nesting is LIST (2) for \"list\" mode", () => {
+    const oa = new ObjectAttribute("m", metadataFields(), "list");
+    assert.equal(oa.toPb().nestedType!.nesting, 2 /* LIST */);
+  });
+
+  void it("nestedType.nesting is SET (3) for \"set\" mode", () => {
+    const oa = new ObjectAttribute("m", metadataFields(), "set");
+    assert.equal(oa.toPb().nestedType!.nesting, 3 /* SET */);
+  });
+
+  void it("nestedType.nesting is MAP (4) for \"map\" mode", () => {
+    const oa = new ObjectAttribute("m", metadataFields(), "map");
+    assert.equal(oa.toPb().nestedType!.nesting, 4 /* MAP */);
+  });
+
+  void it("nestedType.attributes lists the child fields", () => {
+    const oa = new ObjectAttribute("metadata", metadataFields(), "single");
+    const childAttrs = oa.toPb().nestedType!.attributes;
+    assert.equal(childAttrs.length, 2);
+    assert.equal(childAttrs[0]!.name, "owner");
+    assert.equal(childAttrs[1]!.name, "environment");
+  });
+
+  void it("forwards optional/computed/sensitive from opts", () => {
+    const oa = new ObjectAttribute("m", metadataFields(), "single", {
+      optional: true, computed: true, sensitive: true,
+    });
+    const pb = oa.toPb();
+    assert.equal(pb.optional, true);
+    assert.equal(pb.computed, true);
+    assert.equal(pb.sensitive, true);
+  });
+
+  void it("appears correctly in Schema.toPb() block attributes", () => {
+    const schema = new Schema([
+      new Attribute("id",   types.string(), { computed: true }),
+      new ObjectAttribute("meta", metadataFields(), "single", { optional: true }),
+    ]);
+    const attrs = schema.toPb().block!.attributes;
+    assert.equal(attrs.length, 2);
+    assert.equal(attrs[1]!.name, "meta");
+    assert.ok(attrs[1]!.nestedType);
+    assert.equal(attrs[1]!.type.length, 0);
+  });
+});
+
+void describe("TfObject — SINGLE nesting encode/decode round-trip", () => {
+  const obj = new TfObject(metadataFields(), "single");
+
+  void it("encodes and decodes a plain object", () => {
+    const val = { owner: "alice", environment: "prod" };
+    const enc = obj.encode(val);
+    assert.deepEqual(obj.decode(enc), val);
+  });
+
+  void it("encode passes through null", () => {
+    assert.equal(obj.encode(null), null);
+  });
+
+  void it("decode passes through null", () => {
+    assert.equal(obj.decode(null), null);
+  });
+
+  void it("encode passes through Unknown", () => {
+    assert.equal(obj.encode(Unknown), Unknown);
+  });
+
+  void it("decode passes through Unknown", () => {
+    assert.equal(obj.decode(Unknown), Unknown);
+  });
+
+  void it("field-level Unknown is preserved through encode and decode", () => {
+    const val = { owner: Unknown, environment: "prod" };
+    const enc = obj.encode(val) as Record<string, unknown>;
+    assert.equal(enc["owner"], Unknown);
+    const dec = obj.decode(enc) as Record<string, unknown>;
+    assert.equal(dec["owner"], Unknown);
+  });
+
+  void it("unknown schema fields are dropped during encode", () => {
+    const val = { owner: "alice", environment: "prod", extra: "ignored" };
+    const enc = obj.encode(val) as Record<string, unknown>;
+    assert.ok(!("extra" in enc), "extra field should be dropped");
+  });
+});
+
+void describe("TfObject — LIST nesting encode/decode round-trip", () => {
+  const obj = new TfObject(metadataFields(), "list");
+
+  void it("encodes and decodes an array of objects", () => {
+    const val = [
+      { owner: "alice", environment: "prod" },
+      { owner: "bob",   environment: "staging" },
+    ];
+    assert.deepEqual(obj.decode(obj.encode(val)), val);
+  });
+
+  void it("encode/decode empty list", () => {
+    assert.deepEqual(obj.decode(obj.encode([])), []);
+  });
+});
+
+void describe("TfObject — SET nesting encode/decode round-trip", () => {
+  const obj = new TfObject(metadataFields(), "set");
+
+  void it("encodes and decodes an array (same as list)", () => {
+    const val = [{ owner: "alice", environment: "prod" }];
+    assert.deepEqual(obj.decode(obj.encode(val)), val);
+  });
+});
+
+void describe("TfObject — MAP nesting encode/decode round-trip", () => {
+  const obj = new TfObject(metadataFields(), "map");
+
+  void it("encodes and decodes a map of objects", () => {
+    const val = {
+      dev:  { owner: "alice", environment: "dev" },
+      prod: { owner: "bob",   environment: "prod" },
+    };
+    assert.deepEqual(obj.decode(obj.encode(val)), val);
+  });
+
+  void it("encode/decode empty map", () => {
+    assert.deepEqual(obj.decode(obj.encode({})), {});
+  });
+});
+
+void describe("TfObject — semanticallyEqual (SINGLE)", () => {
+  const obj = new TfObject(metadataFields(), "single");
+
+  void it("identical objects are equal", () => {
+    assert.ok(obj.semanticallyEqual(
+      { owner: "alice", environment: "prod" },
+      { owner: "alice", environment: "prod" },
+    ));
+  });
+
+  void it("different field value → not equal", () => {
+    assert.ok(!obj.semanticallyEqual(
+      { owner: "alice", environment: "prod" },
+      { owner: "alice", environment: "staging" },
+    ));
+  });
+
+  void it("null vs null → equal", () => {
+    assert.ok(obj.semanticallyEqual(null, null));
+  });
+
+  void it("null vs object → not equal", () => {
+    assert.ok(!obj.semanticallyEqual(null, { owner: "alice", environment: "prod" }));
+  });
+
+  void it("Unknown vs Unknown → equal", () => {
+    assert.ok(obj.semanticallyEqual(Unknown, Unknown));
+  });
+
+  void it("Unknown vs object → not equal", () => {
+    assert.ok(!obj.semanticallyEqual(Unknown, { owner: "alice", environment: "prod" }));
+  });
+
+  void it("field-level Unknown: same on both sides → equal", () => {
+    assert.ok(obj.semanticallyEqual(
+      { owner: Unknown, environment: "prod" },
+      { owner: Unknown, environment: "prod" },
+    ));
+  });
+
+  void it("field-level Unknown vs known value → not equal", () => {
+    assert.ok(!obj.semanticallyEqual(
+      { owner: Unknown, environment: "prod" },
+      { owner: "alice", environment: "prod" },
+    ));
+  });
+});
+
+void describe("TfObject — semanticallyEqual (LIST)", () => {
+  const obj = new TfObject(metadataFields(), "list");
+
+  void it("same order → equal", () => {
+    const a = [{ owner: "alice", environment: "prod" }];
+    assert.ok(obj.semanticallyEqual(a, [...a]));
+  });
+
+  void it("different order → NOT equal (list is ordered)", () => {
+    const a = [{ owner: "alice", environment: "prod" }, { owner: "bob", environment: "staging" }];
+    const b = [{ owner: "bob",   environment: "staging" }, { owner: "alice", environment: "prod" }];
+    assert.ok(!obj.semanticallyEqual(a, b));
+  });
+
+  void it("different length → not equal", () => {
+    assert.ok(!obj.semanticallyEqual(
+      [{ owner: "alice", environment: "prod" }],
+      [],
+    ));
+  });
+});
+
+void describe("TfObject — semanticallyEqual (SET)", () => {
+  const obj = new TfObject(metadataFields(), "set");
+
+  void it("same elements in different order → equal", () => {
+    const a = [{ owner: "alice", environment: "prod" }, { owner: "bob", environment: "staging" }];
+    const b = [{ owner: "bob",   environment: "staging" }, { owner: "alice", environment: "prod" }];
+    assert.ok(obj.semanticallyEqual(a, b));
+  });
+
+  void it("different elements → not equal", () => {
+    assert.ok(!obj.semanticallyEqual(
+      [{ owner: "alice", environment: "prod" }],
+      [{ owner: "charlie", environment: "prod" }],
+    ));
+  });
+});
+
+void describe("TfObject — semanticallyEqual (MAP)", () => {
+  const obj = new TfObject(metadataFields(), "map");
+
+  void it("same map → equal", () => {
+    const m = { dev: { owner: "alice", environment: "dev" } };
+    assert.ok(obj.semanticallyEqual(m, { ...m }));
+  });
+
+  void it("different value → not equal", () => {
+    assert.ok(!obj.semanticallyEqual(
+      { dev: { owner: "alice", environment: "dev" } },
+      { dev: { owner: "bob",   environment: "dev" } },
+    ));
+  });
+
+  void it("different keys → not equal", () => {
+    assert.ok(!obj.semanticallyEqual(
+      { dev: { owner: "alice", environment: "dev" } },
+      { prod: { owner: "alice", environment: "dev" } },
+    ));
+  });
+});
+
+void describe("encodeBlock / decodeBlock with ObjectAttribute", () => {
+  const schema = new Schema([
+    new Attribute("id",       types.string(),                          { computed: true }),
+    new ObjectAttribute("meta", metadataFields(), "single",            { optional: true }),
+  ]);
+  const block = schema.block;
+
+  void it("encodeBlock round-trips an ObjectAttribute value", () => {
+    const state = { id: "1", meta: { owner: "alice", environment: "prod" } };
+    const encoded = encodeBlock(block, state);
+    assert.deepEqual(decodeBlock(block, encoded as Record<string, unknown>), state);
+  });
+
+  void it("encodeBlock handles null ObjectAttribute value", () => {
+    const state = { id: "1", meta: null };
+    const encoded = encodeBlock(block, state);
+    assert.deepEqual((encoded as Record<string, unknown>)["meta"], null);
+  });
+
+  void it("decodeBlock handles null ObjectAttribute value", () => {
+    const decoded = decodeBlock(block, { id: "1", meta: null });
+    assert.equal(decoded!["meta"], null);
+  });
+});
+
+void describe("encodeBlockPreserving with ObjectAttribute", () => {
+  const schema = new Schema([
+    new Attribute("id",   types.string(),                       { computed: true }),
+    new ObjectAttribute("meta", metadataFields(), "single",     { optional: true }),
+  ]);
+  const block = schema.block;
+
+  void it("preserves prior wire bytes when ObjectAttribute is semantically unchanged", () => {
+    // Simulate: prior raw has meta as a plain object; new state has identical value.
+    const priorRaw = { id: "1", meta: { owner: "alice", environment: "prod" } };
+    const newState = { id: "1", meta: { owner: "alice", environment: "prod" } };
+
+    const encoded = encodeBlockPreserving(block, newState, priorRaw);
+    // The wire representation should be the same object reference (prior preserved).
+    assert.equal(
+      (encoded as Record<string, unknown>)["meta"],
+      priorRaw["meta"],
+      "prior wire bytes should be reused for unchanged ObjectAttribute",
+    );
+  });
+
+  void it("uses new encoding when ObjectAttribute value changes", () => {
+    const priorRaw = { id: "1", meta: { owner: "alice", environment: "prod" } };
+    const newState  = { id: "1", meta: { owner: "bob",   environment: "prod" } };
+
+    const encoded = encodeBlockPreserving(block, newState, priorRaw);
+    assert.deepEqual(
+      (encoded as Record<string, unknown>)["meta"],
+      { owner: "bob", environment: "prod" },
+    );
+    // Must NOT be the prior reference.
+    assert.notEqual(
+      (encoded as Record<string, unknown>)["meta"],
+      priorRaw["meta"],
+    );
   });
 });

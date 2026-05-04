@@ -685,3 +685,91 @@ describe("provider: unhandled provider error becomes an error diagnostic", () =>
     assert.equal(providerProc.exitCode, null, "provider process should still be running");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Suite 8 — ObjectAttribute (metadata, SINGLE nesting)
+//
+// Verifies that a Schema_Object / nested_type attribute:
+//   • is accepted by Terraform (provider schema registers correctly)
+//   • is applied correctly (create stores the structured value)
+//   • produces no spurious plan diff after apply (encodeBlockPreserving + TfObject
+//     semanticallyEqual compares field-by-field)
+//   • a real field change IS detected as a plan change (1 to change)
+//   • the change is correctly applied
+// ---------------------------------------------------------------------------
+
+describe("provider: ObjectAttribute metadata (SINGLE nesting)", () => {
+  let api: ApiFixture;
+  let tfDir: string;
+  let providerProc: ChildProcess;
+  let reattachEnv: Record<string, string>;
+
+  before(async () => {
+    api = await startApiServer(BASE_API_PORT + 6);
+    tfDir = fs.mkdtempSync(path.join(os.tmpdir(), "tf-e2e-meta-"));
+    writeTfConfig(tfDir, BASE_API_PORT + 6, "one-server-with-metadata.tftpl");
+    const { proc, reattachJson } = await startProviderDevMode();
+    providerProc = proc;
+    reattachEnv = { TF_REATTACH_PROVIDERS: reattachJson };
+  });
+
+  after(() => {
+    providerProc?.kill();
+    api.proc.kill();
+    fs.rmSync(tfDir, { recursive: true, force: true });
+  });
+
+  it("plan shows 1 resource to create", () => {
+    const out = tf(["plan", "-no-color", "-out=tfplan-meta"], tfDir, path.join(tfDir, ".terraformrc"), reattachEnv);
+    assert.match(out, /Plan: 1 to add/);
+  });
+
+  it("apply creates the server and the API stores the metadata object", async () => {
+    tf(["apply", "-auto-approve", "-no-color", "tfplan-meta"], tfDir, path.join(tfDir, ".terraformrc"), reattachEnv);
+    const servers = (await apiGet(BASE_API_PORT + 6, "/servers")) as Array<{
+      name: string;
+      metadata: { owner: string; environment: string } | null;
+    }>;
+    assert.equal(servers.length, 1);
+    const meta = servers[0]!.metadata;
+    assert.ok(meta, "metadata should be stored in the API");
+    assert.equal(meta.owner,       "alice");
+    assert.equal(meta.environment, "prod");
+  });
+
+  // Core regression test for TfObject.semanticallyEqual + encodeBlockPreserving:
+  // the read() round-trip through TfObject.decode → TfObject.encode must produce
+  // a value that compares as equal to the prior wire bytes, so no spurious diff occurs.
+  it("plan immediately after apply shows no changes (ObjectAttribute idempotency)", () => {
+    const out = tf(["plan", "-no-color"], tfDir, path.join(tfDir, ".terraformrc"), reattachEnv);
+    assert.match(out, /No changes\.|0 to change/);
+  });
+
+  it("changing a metadata field IS detected as a plan change (1 to change)", () => {
+    renderFixture(tfDir, "one-server-with-metadata-updated.tftpl", { API_PORT: String(BASE_API_PORT + 6) });
+    const out = tf(["plan", "-no-color", "-out=tfplan-meta-update"], tfDir, path.join(tfDir, ".terraformrc"), reattachEnv);
+    assert.match(out, /Plan: 0 to add, 1 to change, 0 to destroy/);
+  });
+
+  it("applying the metadata change updates the value in the API", async () => {
+    tf(["apply", "-auto-approve", "-no-color", "tfplan-meta-update"], tfDir, path.join(tfDir, ".terraformrc"), reattachEnv);
+    const servers = (await apiGet(BASE_API_PORT + 6, "/servers")) as Array<{
+      name: string;
+      metadata: { owner: string; environment: string } | null;
+    }>;
+    const meta = servers[0]!.metadata;
+    assert.ok(meta);
+    assert.equal(meta.environment, "staging", "environment should be updated to 'staging'");
+  });
+
+  it("plan after metadata update shows no changes (idempotency after update)", () => {
+    const out = tf(["plan", "-no-color"], tfDir, path.join(tfDir, ".terraformrc"), reattachEnv);
+    assert.match(out, /No changes\.|0 to change/);
+  });
+
+  it("destroy removes the server", async () => {
+    tf(["destroy", "-auto-approve", "-no-color"], tfDir, path.join(tfDir, ".terraformrc"), reattachEnv);
+    const after = (await apiGet(BASE_API_PORT + 6, "/servers")) as unknown[];
+    assert.equal(after.length, 0);
+  });
+});

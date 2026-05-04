@@ -322,6 +322,7 @@ void describe("ApplyResourceChange — NormalizedJson semantic equality", () => 
 // Helpers for panic / error-handling tests
 // ---------------------------------------------------------------------------
 
+import { ObjectAttribute } from "./schema.js";
 import { readDynamicValue } from "./encoding.js";
 
 function makePanicResourceClass(schema: Schema, panicOn: "create" | "read" | "update" | "delete" | "plan" | "import"): ResourceClass {
@@ -541,5 +542,162 @@ void describe("encodeBlockPreserving — no spurious diffs on read", () => {
     const returnedConfig = (returnedState as Record<string, unknown>)["config"];
     // Should be normalised {"x":99}
     assert.equal(returnedConfig, JSON.stringify({ x: 99 }), "changed value should use new encoding");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. ObjectAttribute — changedFields detection via PlanResourceChange
+// ---------------------------------------------------------------------------
+
+function makeSchemaWithObjectAttr(): Schema {
+  return new Schema([
+    new Attribute("name", types.string(), { required: true }),
+    new ObjectAttribute("meta", [
+      new Attribute("owner",       types.string(), { optional: true }),
+      new Attribute("environment", types.string(), { optional: true }),
+    ], "single", { optional: true, computed: true }),
+  ]);
+}
+
+void describe("ObjectAttribute in PlanResourceChange — changedFields", () => {
+  void it("changing a nested field puts the attribute name in changedFields", async () => {
+    const schema   = makeSchemaWithObjectAttr();
+    const recorder: Recorder = { planChangedFields: null, applyChangedFields: null };
+    const svc = new ProviderServicer(makeProvider(makeResourceClass(schema, recorder)));
+
+    const prior    = dv({ name: "r1", meta: { owner: "alice", environment: "prod" } });
+    const proposed = dv({ name: "r1", meta: { owner: "alice", environment: "staging" } });
+
+    await svc.PlanResourceChange({
+      typeName: "stub_item",
+      priorState: prior,
+      proposedNewState: proposed,
+      config: proposed,
+      priorPrivate: new Uint8Array(),
+      providerMeta: dv({}),
+      clientCapabilities: undefined,
+      priorIdentity: undefined,
+      plannedPrivate: new Uint8Array(),
+    }, null);
+
+    assert.ok(recorder.planChangedFields !== null);
+    assert.ok(recorder.planChangedFields!.has("meta"),
+      "changed nested field should put 'meta' in changedFields");
+  });
+
+  void it("identical nested object does NOT appear in changedFields", async () => {
+    const schema   = makeSchemaWithObjectAttr();
+    const recorder: Recorder = { planChangedFields: null, applyChangedFields: null };
+    const svc = new ProviderServicer(makeProvider(makeResourceClass(schema, recorder)));
+
+    const state = dv({ name: "r1", meta: { owner: "alice", environment: "prod" } });
+
+    await svc.PlanResourceChange({
+      typeName: "stub_item",
+      priorState: state,
+      proposedNewState: dv({ name: "r2", meta: { owner: "alice", environment: "prod" } }),
+      config:          dv({ name: "r2", meta: { owner: "alice", environment: "prod" } }),
+      priorPrivate: new Uint8Array(),
+      providerMeta: dv({}),
+      clientCapabilities: undefined,
+      priorIdentity: undefined,
+      plannedPrivate: new Uint8Array(),
+    }, null);
+
+    assert.ok(!recorder.planChangedFields!.has("meta"),
+      "unchanged nested object should NOT appear in changedFields");
+    assert.ok(recorder.planChangedFields!.has("name"),
+      "changed 'name' should still appear in changedFields");
+  });
+
+  void it("null → object transition is detected as a change", async () => {
+    const schema   = makeSchemaWithObjectAttr();
+    const recorder: Recorder = { planChangedFields: null, applyChangedFields: null };
+    const svc = new ProviderServicer(makeProvider(makeResourceClass(schema, recorder)));
+
+    await svc.PlanResourceChange({
+      typeName: "stub_item",
+      priorState:      dv({ name: "r1", meta: null }),
+      proposedNewState: dv({ name: "r1", meta: { owner: "alice", environment: "prod" } }),
+      config:           dv({ name: "r1", meta: { owner: "alice", environment: "prod" } }),
+      priorPrivate: new Uint8Array(),
+      providerMeta: dv({}),
+      clientCapabilities: undefined,
+      priorIdentity: undefined,
+      plannedPrivate: new Uint8Array(),
+    }, null);
+
+    assert.ok(recorder.planChangedFields!.has("meta"),
+      "null → object should appear in changedFields");
+  });
+
+  void it("object → null transition is detected as a change", async () => {
+    const schema   = makeSchemaWithObjectAttr();
+    const recorder: Recorder = { planChangedFields: null, applyChangedFields: null };
+    const svc = new ProviderServicer(makeProvider(makeResourceClass(schema, recorder)));
+
+    await svc.PlanResourceChange({
+      typeName: "stub_item",
+      priorState:      dv({ name: "r1", meta: { owner: "alice", environment: "prod" } }),
+      proposedNewState: dv({ name: "r1", meta: null }),
+      config:           dv({ name: "r1", meta: null }),
+      priorPrivate: new Uint8Array(),
+      providerMeta: dv({}),
+      clientCapabilities: undefined,
+      priorIdentity: undefined,
+      plannedPrivate: new Uint8Array(),
+    }, null);
+
+    assert.ok(recorder.planChangedFields!.has("meta"),
+      "object → null should appear in changedFields");
+  });
+});
+
+void describe("ObjectAttribute in ApplyResourceChange — changedFields", () => {
+  void it("changing a nested field puts the attribute name in apply changedFields", async () => {
+    const schema   = makeSchemaWithObjectAttr();
+    const recorder: Recorder = { planChangedFields: null, applyChangedFields: null };
+    const svc = new ProviderServicer(makeProvider(makeResourceClass(schema, recorder)));
+
+    const prior   = dv({ name: "r1", meta: { owner: "alice", environment: "prod" } });
+    const planned = dv({ name: "r1", meta: { owner: "alice", environment: "staging" } });
+
+    await svc.ApplyResourceChange({
+      typeName: "stub_item",
+      priorState: prior,
+      plannedState: planned,
+      config: planned,
+      plannedPrivate: new Uint8Array(),
+      plannedIdentity: undefined,
+      providerMeta: dv({}),
+    }, null);
+
+    assert.ok(recorder.applyChangedFields!.has("meta"),
+      "changed nested object field should appear in apply changedFields");
+  });
+
+  void it("identical nested object does NOT appear in apply changedFields", async () => {
+    const schema   = makeSchemaWithObjectAttr();
+    const recorder: Recorder = { planChangedFields: null, applyChangedFields: null };
+    const svc = new ProviderServicer(makeProvider(makeResourceClass(schema, recorder)));
+
+    const meta  = { owner: "alice", environment: "prod" };
+    const prior   = dv({ name: "r1", meta });
+    const planned = dv({ name: "r2", meta });
+
+    await svc.ApplyResourceChange({
+      typeName: "stub_item",
+      priorState: prior,
+      plannedState: planned,
+      config: planned,
+      plannedPrivate: new Uint8Array(),
+      plannedIdentity: undefined,
+      providerMeta: dv({}),
+    }, null);
+
+    assert.ok(!recorder.applyChangedFields!.has("meta"),
+      "unchanged nested object should NOT appear in apply changedFields");
+    assert.ok(recorder.applyChangedFields!.has("name"),
+      "'name' should still appear in apply changedFields");
   });
 });

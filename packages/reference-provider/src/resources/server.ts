@@ -16,6 +16,7 @@ import {
   Unknown,
   types,
   Attribute,
+  ObjectAttribute,
   Schema,
 } from "terrably";
 import type {
@@ -34,6 +35,7 @@ interface ApiServer {
   status: string;
   created_at: string;
   tags: unknown;
+  metadata: unknown;
 }
 
 async function apiFetch(
@@ -74,6 +76,10 @@ export class DummyCloudServer implements Resource {
         new Attribute("status", types.string(), { computed: true }),
         new Attribute("created_at", types.string(), { computed: true }),
         new Attribute("tags", types.normalizedJson(), { optional: true, computed: true }),
+        new ObjectAttribute("metadata", [
+          new Attribute("owner",       types.string(), { optional: true, computed: true }),
+          new Attribute("environment", types.string(), { optional: true, computed: true }),
+        ], "single", { optional: true, computed: true }),
       ],
       [],
       1
@@ -84,13 +90,15 @@ export class DummyCloudServer implements Resource {
     const body: Record<string, unknown> = { name: planned["name"], size: planned["size"] };
     const tags = planned["tags"];
     if (tags !== null && tags !== Unknown) body["tags"] = tags;
+    const meta = planned["metadata"];
+    if (meta !== null && meta !== Unknown) body["metadata"] = meta;
     const result = await apiFetch("POST", `${this.apiBase}/servers`, body);
     if (!result.ok) {
       ctx.diagnostics.addError("API error creating server", JSON.stringify(result.data));
       return planned;
     }
     const s = result.data as ApiServer;
-    return { id: s.id, name: s.name, size: s.size, status: s.status, created_at: s.created_at, tags: s.tags ?? null };
+    return { id: s.id, name: s.name, size: s.size, status: s.status, created_at: s.created_at, tags: s.tags ?? null, metadata: s.metadata ?? null };
   }
 
   async read(ctx: ReadContext, current: State): Promise<State | null> {
@@ -102,20 +110,22 @@ export class DummyCloudServer implements Resource {
       return current;
     }
     const s = result.data as ApiServer;
-    return { id: s.id, name: s.name, size: s.size, status: s.status, created_at: s.created_at, tags: s.tags ?? null };
+    return { id: s.id, name: s.name, size: s.size, status: s.status, created_at: s.created_at, tags: s.tags ?? null, metadata: s.metadata ?? null };
   }
 
   async update(ctx: UpdateContext, prior: State, planned: State): Promise<State> {
     const body: Record<string, unknown> = { name: planned["name"], size: planned["size"] };
     const tags = planned["tags"];
     if (tags !== null && tags !== Unknown) body["tags"] = tags;
+    const meta = planned["metadata"];
+    if (meta !== null && meta !== Unknown) body["metadata"] = meta;
     const result = await apiFetch("PUT", `${this.apiBase}/servers/${prior["id"]}`, body);
     if (!result.ok) {
       ctx.diagnostics.addError("API error updating server", JSON.stringify(result.data));
       return prior;
     }
     const s = result.data as ApiServer;
-    return { id: s.id, name: s.name, size: s.size, status: s.status, created_at: s.created_at, tags: s.tags ?? null };
+    return { id: s.id, name: s.name, size: s.size, status: s.status, created_at: s.created_at, tags: s.tags ?? null, metadata: s.metadata ?? null };
   }
 
   async delete(ctx: DeleteContext, current: State): Promise<void> {
@@ -129,7 +139,7 @@ export class DummyCloudServer implements Resource {
     const result = await apiFetch("GET", `${this.apiBase}/servers/${id}`);
     if (result.status === 404) return null;
     const s = result.data as ApiServer;
-    return { id: s.id, name: s.name, size: s.size, status: s.status, created_at: s.created_at, tags: s.tags ?? null };
+    return { id: s.id, name: s.name, size: s.size, status: s.status, created_at: s.created_at, tags: s.tags ?? null, metadata: s.metadata ?? null };
   }
 }
 
