@@ -27,45 +27,65 @@ The items marked **Not supported** will cause Terraform to surface a generic err
 | Nested blocks: single, list, set, map, group | All five nesting modes |
 | All scalar types: string, number, bool | — |
 | Collection types: list, set, map | — |
+| `object` attribute type: single, list, set, map nesting | Use `ObjectAttribute` — HCL `=` syntax, not block syntax |
 | `normalizedJson` type | JSON stored as a sorted-key string; key-order changes are not diffs |
 | Structured logging | `createLogger()` / `TF_LOG_PROVIDER` |
 
 ---
 
-## Not supported
+### `object` attribute type
 
-### `object` attribute type (nested objects as attributes)
+Use `ObjectAttribute` to define a typed object on a resource attribute. This uses HCL assignment (`=`) syntax, unlike `NestedBlock` which uses block syntax.
 
-The Plugin Framework uses `types.ObjectType` / `schema.Attribute` with `nested_type` to define a typed object inline on an attribute — without the block indentation syntax.
+**Provider schema (TypeScript)**
 
-**What you cannot write today**
+```typescript
+import { Attribute, ObjectAttribute, types } from "terrably";
+
+new ObjectAttribute("metadata", [
+  new Attribute("owner",       types.string(), { optional: true, computed: true }),
+  new Attribute("environment", types.string(), { optional: true, computed: true }),
+], "single", { optional: true, computed: true })
+```
+
+**Terraform configuration (HCL)**
 
 ```hcl
-resource "mycloud_server" "example" {
-  # "metadata" defined as an object *attribute*, not a block
+resource "mycloud_server" "web" {
+  name = "web-01"
+
   metadata = {
-    owner = "alice"
-    env   = "prod"
+    owner       = "alice"
+    environment = "prod"
   }
 }
 ```
 
-**Workaround**
+**Nesting modes**
 
-Use a `NestedBlock` with `"single"` nesting mode –
+| Mode | HCL shape | TypeScript nesting arg |
+|---|---|---|
+| `"single"` | `attr = { key = "val" }` | `"single"` (default) |
+| `"list"` | `attr = [{ key = "val" }, ...]` | `"list"` |
+| `"set"` | `attr = [{ key = "val" }, ...]` | `"set"` |
+| `"map"` | `attr = { label = { key = "val" } }` | `"map"` |
 
-```hcl
-resource "mycloud_server" "example" {
-  metadata {
-    owner = "alice"
-    env   = "prod"
-  }
-}
-```
+For `"set"` nesting, terrably compares elements field-by-field (order-insensitive) so a reordered set does not appear as a plan diff.
 
-The block-based approach works fine and is identical in behaviour; it just uses block HCL syntax instead of object expression syntax.
+**`ObjectAttribute` vs `NestedBlock`**
+
+Both represent a group of typed sub-fields. The difference is purely syntactic –
+
+| | `ObjectAttribute` | `NestedBlock` |
+|---|---|---|
+| HCL syntax | `attr = { ... }` | `attr { ... }` |
+| SDK class | `ObjectAttribute` | `NestedBlock` / `Block` |
+| Supports `null` | Yes (if `optional`) | No — blocks cannot be null |
+| Terraform type system | `object(...)` attribute | Block (no type in protocol) |
 
 ---
+
+## Not supported
 
 ### `tuple` type
 
@@ -182,7 +202,7 @@ Store any plan-time state as a computed attribute in the resource schema. This i
 | Provider functions | ✅ | Terraform ≥ 1.8 |
 | `terraform import` | ✅ | Implement `import()` |
 | State schema migration | ✅ | Implement `upgrade()` |
-| `object` attribute type | ❌ | Use `NestedBlock` instead |
+| `object` attribute type | ✅ | All four nesting modes; use `ObjectAttribute` |
 | `tuple` type | ❌ | Use separate attributes or `list` + validation |
 | `dynamic` type | ❌ | Use `normalizedJson` or explicit schema |
 | Ephemeral resources | ❌ | Terraform ≥ 1.10 |
