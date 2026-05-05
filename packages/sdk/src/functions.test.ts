@@ -185,8 +185,8 @@ void describe("GetFunctions", () => {
   void it("returns an empty map when provider has no functions", async () => {
     const svc = new ProviderServicer(makeProvider());
     const res = await svc.GetFunctions({} as never, {});
-    assert.deepEqual(res.functions, {});
-    assert.deepEqual(res.diagnostics, []);
+    assert.deepEqual(res.functions, {}, "functions should be an empty map when no functions are registered");
+    assert.deepEqual(res.diagnostics, [], "no diagnostics should be emitted");
   });
 
   void it("returns a schema entry for each registered function", async () => {
@@ -200,28 +200,28 @@ void describe("GetFunctions", () => {
     const svc = new ProviderServicer(makeProvider([UppercaseFunction]));
     const res = await svc.GetFunctions({} as never, {});
     const fn = res.functions!["uppercase"]!;
-    assert.equal(fn.parameters?.[0]?.name, "input");
+    assert.equal(fn.parameters?.[0]?.name, "input", "first parameter name should be 'input'");
     // Type bytes should encode the JSON string '"string"'
-    assert.equal(Buffer.from(fn.parameters![0]!.type!).toString(), '"string"');
+    assert.equal(Buffer.from(fn.parameters![0]!.type!).toString(), '"string"', "parameter type bytes should encode to JSON 'string'");
   });
 
   void it("populates summary", async () => {
     const svc = new ProviderServicer(makeProvider([UppercaseFunction]));
     const res = await svc.GetFunctions({} as never, {});
-    assert.equal(res.functions!["uppercase"]!.summary, "Convert a string to uppercase");
+    assert.equal(res.functions!["uppercase"]!.summary, "Convert a string to uppercase", "summary should match getSignature().summary");
   });
 
   void it("populates variadic_parameter when present", async () => {
     const svc = new ProviderServicer(makeProvider([ConcatFunction]));
     const res = await svc.GetFunctions({} as never, {});
     const fn = res.functions!["concat"]!;
-    assert.equal(fn.variadicParameter?.name, "values");
+    assert.equal(fn.variadicParameter?.name, "values", "variadic parameter name should be 'values'");
   });
 
   void it("returns undefined variadic_parameter for non-variadic functions", async () => {
     const svc = new ProviderServicer(makeProvider([UppercaseFunction]));
     const res = await svc.GetFunctions({} as never, {});
-    assert.equal(res.functions!["uppercase"]!.variadicParameter, undefined);
+    assert.equal(res.functions!["uppercase"]!.variadicParameter, undefined, "non-variadic function should have no variadicParameter");
   });
 
   void it("includes function schemas in GetProviderSchema.functions", async () => {
@@ -242,9 +242,9 @@ void describe("CallFunction — basic dispatch", () => {
       { name: "uppercase", arguments: [dv("hello")] },
       {}
     );
-    assert.equal(res.error, undefined);
+    assert.equal(res.error, undefined, "should have no function error");
     const result = readDynamicValue(res.result as unknown as DynamicValue);
-    assert.equal(result, "HELLO");
+    assert.equal(result, "HELLO", "result should be the uppercased string");
   });
 
   void it("calls add and returns the sum", async () => {
@@ -253,8 +253,8 @@ void describe("CallFunction — basic dispatch", () => {
       { name: "add", arguments: [dv(3), dv(4)] },
       {}
     );
-    assert.equal(res.error, undefined);
-    assert.equal(readDynamicValue(res.result as unknown as DynamicValue), 7);
+    assert.equal(res.error, undefined, "should have no function error");
+    assert.equal(readDynamicValue(res.result as unknown as DynamicValue), 7, "result should be 3+4=7");
   });
 });
 
@@ -265,8 +265,8 @@ void describe("CallFunction — variadic", () => {
       { name: "concat", arguments: [dv(", "), dv("a"), dv("b"), dv("c")] },
       {}
     );
-    assert.equal(res.error, undefined);
-    assert.equal(readDynamicValue(res.result as unknown as DynamicValue), "a, b, c");
+    assert.equal(res.error, undefined, "should have no function error");
+    assert.equal(readDynamicValue(res.result as unknown as DynamicValue), "a, b, c", "result should join values with the separator");
   });
 
   void it("works with zero variadic args (only required parameter provided)", async () => {
@@ -275,8 +275,8 @@ void describe("CallFunction — variadic", () => {
       { name: "concat", arguments: [dv(",")] },
       {}
     );
-    assert.equal(res.error, undefined);
-    assert.equal(readDynamicValue(res.result as unknown as DynamicValue), "");
+    assert.equal(res.error, undefined, "should have no function error");
+    assert.equal(readDynamicValue(res.result as unknown as DynamicValue), "", "result should be empty string when no variadic args are provided");
   });
 });
 
@@ -318,7 +318,7 @@ void describe("CallFunction — diagnostic error in call()", () => {
     const svc = new ProviderServicer(makeProvider([AlwaysFailFunction]));
     const res = await svc.CallFunction({ name: "fail_always", arguments: [] }, {});
     assert.ok(res.error, "should have an error");
-    assert.equal(res.error!.text ?? "", "Intentional failure");
+    assert.equal(res.error!.text ?? "", "Intentional failure", "error text should be the diagnostic summary");
   });
 });
 

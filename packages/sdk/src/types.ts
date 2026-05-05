@@ -1,7 +1,7 @@
 /**
  * TfType system – mirrors hfern/tf types.py, adapted for TypeScript.
  *
- * Every concrete type provides:
+ * Every concrete type provides –
  *   encode(value)  → wire-safe representation (numbers, strings, plain objects)
  *   decode(value)  → JS-idiomatic representation
  *   semanticallyEqual(a, b) → whether two decoded values represent the same state
@@ -97,7 +97,11 @@ export class TfNormalizedJson implements TfType<unknown> {
     }
   }
   semanticallyEqual(a: TfValue, b: TfValue) {
-    return JSON.stringify(a) === JSON.stringify(b);
+    if (a === b) return true;
+    if (a instanceof _Unknown || b instanceof _Unknown) return a === b;
+    if (a === null || b === null) return a === b;
+    // Re-encode both values (which sorts keys) so key order doesn't matter.
+    return this.encode(a) === this.encode(b);
   }
   tfType() {
     return Buffer.from('"string"');
@@ -179,9 +183,6 @@ export class TfMap<T> implements TfType<Record<string, T>> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Convenience factory (mirrors Python's `from tf import types as t`)
-// ---------------------------------------------------------------------------
 export const types = {
   string: () => new TfString(),
   number: () => new TfNumber(),

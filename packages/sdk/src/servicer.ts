@@ -82,8 +82,9 @@ import type {
 import type { Provider, Resource, DataSource, ResourceClass, DataSourceClass, FunctionClass, TerrablyFunction, FunctionSignature, PlanContext } from "./interfaces.js";
 import { Diagnostics } from "./interfaces.js";
 import { readDynamicValue, toDynamicValue, diagsToPb } from "./encoding.js";
-import { encodeBlock, decodeBlock, type State, type DescriptionKind } from "./schema.js";
+import { encodeBlock, encodeBlockPreserving, decodeBlock, type State, type DescriptionKind } from "./schema.js";
 import { Unknown } from "./types.js";
+import { sdkLog } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -225,6 +226,18 @@ export class ProviderServicer {
       : new cls(this.provider);
   }
 
+  /**
+   * Called from a catch block in any user-facing RPC handler.
+   * Logs the stack trace and appends an error diagnostic so Terraform
+   * surfaces a human-readable message instead of seeing a crashed plugin.
+   */
+  private handleUncaughtError(op: string, typeName: string, err: unknown, diags: Diagnostics): void {
+    const message = err instanceof Error ? err.message : String(err);
+    const detail  = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    sdkLog.error("Unhandled exception in provider handler", { op, typeName, err: message });
+    diags.addError(`Provider panicked in ${op} for ${typeName}`, detail);
+  }
+
   // ---------------------------------------------------------------------------
   // Capabilities / Metadata
   // ---------------------------------------------------------------------------
@@ -322,9 +335,13 @@ export class ProviderServicer {
     req: ValidateProviderConfig_Request,
     _ctx: unknown
   ): Promise<DeepPartial<ValidateProviderConfig_Response>> {
-    const config = readDynamicValue(req.config!) ?? {};
     const diags = new Diagnostics();
-    this.provider.validateConfig(diags, config);
+    try {
+      const config = readDynamicValue(req.config!) ?? {};
+      this.provider.validateConfig(diags, config);
+    } catch (err) {
+      this.handleUncaughtError("ValidateProviderConfig", "provider", err, diags);
+    }
     return { diagnostics: diagsToPb(diags.items) };
   }
 
@@ -333,9 +350,13 @@ export class ProviderServicer {
     _ctx: unknown
   ): Promise<DeepPartial<ValidateResourceConfig_Response>> {
     const diags = new Diagnostics();
-    const config = readDynamicValue(req.config!) ?? {};
-    const inst = this.resInstance(req.typeName);
-    inst.validate?.(diags, req.typeName, config);
+    try {
+      const config = readDynamicValue(req.config!) ?? {};
+      const inst = this.resInstance(req.typeName);
+      inst.validate?.(diags, req.typeName, config);
+    } catch (err) {
+      this.handleUncaughtError("ValidateResourceConfig", req.typeName, err, diags);
+    }
     return { diagnostics: diagsToPb(diags.items) };
   }
 
@@ -344,9 +365,13 @@ export class ProviderServicer {
     _ctx: unknown
   ): Promise<DeepPartial<ValidateDataResourceConfig_Response>> {
     const diags = new Diagnostics();
-    const config = readDynamicValue(req.config!) ?? {};
-    const inst = this.dsInstance(req.typeName);
-    inst.validate?.(diags, req.typeName, config);
+    try {
+      const config = readDynamicValue(req.config!) ?? {};
+      const inst = this.dsInstance(req.typeName);
+      inst.validate?.(diags, req.typeName, config);
+    } catch (err) {
+      this.handleUncaughtError("ValidateDataResourceConfig", req.typeName, err, diags);
+    }
     return { diagnostics: diagsToPb(diags.items) };
   }
 
@@ -359,31 +384,36 @@ export class ProviderServicer {
     _ctx: unknown
   ): Promise<DeepPartial<UpgradeResourceState_Response>> {
     const diags = new Diagnostics();
-    let state: State;
+    try {
+      let state: State;
 
-    if (req.rawState!.json.length > 0) {
-      state = JSON.parse(Buffer.from(req.rawState!.json).toString("utf8"));
-    } else {
-      diags.addError(
-        "UpgradeResourceState with flatmap not supported",
-        "Legacy flatmap format is not supported. This is a bug in the provider SDK."
-      );
+      if (req.rawState!.json.length > 0) {
+        state = JSON.parse(Buffer.from(req.rawState!.json).toString("utf8"));
+      } else {
+        diags.addError(
+          "UpgradeResourceState with flatmap not supported",
+          "Legacy flatmap format is not supported. This is a bug in the provider SDK."
+        );
+        return { diagnostics: diagsToPb(diags.items) };
+      }
+
+      const inst = this.resInstance(req.typeName);
+      const schema = inst.getSchema();
+      const oldVersion = Number(req.version);
+      const newVersion = schema.version;
+
+      if (inst.upgrade && oldVersion < newVersion) {
+        state = await inst.upgrade({ diagnostics: diags, typeName: req.typeName }, oldVersion, state);
+      }
+
+      return {
+        upgradedState: toDynamicValue(state),
+        diagnostics: diagsToPb(diags.items),
+      };
+    } catch (err) {
+      this.handleUncaughtError("UpgradeResourceState", req.typeName, err, diags);
       return { diagnostics: diagsToPb(diags.items) };
     }
-
-    const inst = this.resInstance(req.typeName);
-    const schema = inst.getSchema();
-    const oldVersion = Number(req.version);
-    const newVersion = schema.version;
-
-    if (inst.upgrade && oldVersion < newVersion) {
-      state = await inst.upgrade({ diagnostics: diags, typeName: req.typeName }, oldVersion, state);
-    }
-
-    return {
-      upgradedState: toDynamicValue(state),
-      diagnostics: diagsToPb(diags.items),
-    };
   }
 
   async UpgradeResourceIdentity(
@@ -401,9 +431,13 @@ export class ProviderServicer {
     req: ConfigureProvider_Request,
     _ctx: unknown
   ): Promise<DeepPartial<ConfigureProvider_Response>> {
-    const config = readDynamicValue(req.config!) ?? {};
     const diags = new Diagnostics();
-    await this.provider.configure(diags, config);
+    try {
+      const config = readDynamicValue(req.config!) ?? {};
+      await this.provider.configure(diags, config);
+    } catch (err) {
+      this.handleUncaughtError("ConfigureProvider", "provider", err, diags);
+    }
     return { diagnostics: diagsToPb(diags.items) };
   }
 
@@ -416,22 +450,31 @@ export class ProviderServicer {
     _ctx: unknown
   ): Promise<DeepPartial<ReadResource_Response>> {
     const diags = new Diagnostics();
-    const inst = this.resInstance(req.typeName);
-    const block = inst.getSchema().block;
-
     const rawCurrent = readDynamicValue(req.currentState!);
-    if (rawCurrent === null) {
-      diags.addError(`ReadResource ${req.typeName} called with null state`);
-      return { diagnostics: diagsToPb(diags.items) };
+    try {
+      const inst = this.resInstance(req.typeName);
+      const block = inst.getSchema().block;
+
+      if (rawCurrent === null) {
+        diags.addError(`ReadResource ${req.typeName} called with null state`);
+        return { diagnostics: diagsToPb(diags.items) };
+      }
+
+      const currentState = decodeBlock(block, rawCurrent)!;
+      const newState = await inst.read({ diagnostics: diags, typeName: req.typeName }, currentState);
+
+      return {
+        newState: toDynamicValue(newState ? encodeBlockPreserving(block, newState, rawCurrent) : null),
+        diagnostics: diagsToPb(diags.items),
+      };
+    } catch (err) {
+      this.handleUncaughtError("ReadResource", req.typeName, err, diags);
+      // Return prior state to avoid a spurious destroy-on-error plan.
+      return {
+        newState: rawCurrent ? toDynamicValue(rawCurrent) : toDynamicValue(null),
+        diagnostics: diagsToPb(diags.items),
+      };
     }
-
-    const currentState = decodeBlock(block, rawCurrent)!;
-    const newState = await inst.read({ diagnostics: diags, typeName: req.typeName }, currentState);
-
-    return {
-      newState: toDynamicValue(newState ? encodeBlock(block, newState) : null),
-      diagnostics: diagsToPb(diags.items),
-    };
   }
 
   async PlanResourceChange(
@@ -439,74 +482,82 @@ export class ProviderServicer {
     _ctx: unknown
   ): Promise<DeepPartial<PlanResourceChange_Response>> {
     const diags = new Diagnostics();
-    const inst = this.resInstance(req.typeName);
-    const schema = inst.getSchema();
-    const block = schema.block;
-    const attrs = block.attrMap();
+    try {
+      const inst = this.resInstance(req.typeName);
+      const schema = inst.getSchema();
+      const block = schema.block;
+      const attrs = block.attrMap();
 
-    const rawPrior = readDynamicValue(req.priorState!);
-    const rawProposed = readDynamicValue(req.proposedNewState!);
+      const rawPrior = readDynamicValue(req.priorState!);
+      const rawProposed = readDynamicValue(req.proposedNewState!);
 
-    const priorState = rawPrior ? decodeBlock(block, rawPrior) : null;
-    const proposedState = rawProposed ? decodeBlock(block, rawProposed) : null;
+      const priorState = rawPrior ? decodeBlock(block, rawPrior) : null;
+      const proposedState = rawProposed ? decodeBlock(block, rawProposed) : null;
 
-    // ---- CREATE ----
-    if (priorState === null && proposedState !== null) {
-      const planned: State = {};
-      for (const [k, v] of Object.entries(proposedState)) {
-        if (k in attrs) {
-          planned[k] = v !== null ? v : (attrs[k].computed ? attrs[k].default ?? Unknown : null);
-        } else {
-          planned[k] = v;
+      // ---- CREATE ----
+      if (priorState === null && proposedState !== null) {
+        const planned: State = {};
+        for (const [k, v] of Object.entries(proposedState)) {
+          if (k in attrs) {
+            planned[k] = v !== null ? v : (attrs[k].computed ? attrs[k].default ?? Unknown : null);
+          } else {
+            planned[k] = v;
+          }
         }
+        return {
+          plannedState: toDynamicValue(encodeBlock(block, planned)),
+          diagnostics: diagsToPb(diags.items),
+        };
       }
+
+      // ---- DELETE (plan_destroy = true means we'll get called here) ----
+      if (proposedState === null && priorState !== null) {
+        return {
+          plannedState: toDynamicValue(null),
+          diagnostics: diagsToPb(diags.items),
+        };
+      }
+
+      // ---- UPDATE ----
+      const prior = priorState!;
+      const proposed = proposedState!;
+
+      const blockAttrs = block.blockMap();
+      const changedFields = new Set<string>(
+        Object.keys(proposed).filter((k) => {
+          if (k in attrs) return !attrs[k].type.semanticallyEqual(prior[k], proposed[k]);
+          if (k in blockAttrs) return !blockAttrs[k].semanticallyEqual(prior[k], proposed[k]);
+          return false;
+        })
+      );
+
+      const requiresReplace = [...changedFields]
+        .filter((k) => k in attrs && attrs[k].requiresReplace)
+        .map((k) => ({ steps: [{ attributeName: k }] }));
+
+      const ctx: PlanContext = {
+        diagnostics: diags,
+        typeName: req.typeName,
+        changedFields,
+      };
+
+      let plannedState: State;
+      if (inst.plan) {
+        plannedState = await inst.plan(ctx, { ...prior }, { ...proposed });
+      } else {
+        plannedState = { ...proposed };
+      }
+
       return {
-        plannedState: toDynamicValue(encodeBlock(block, planned)),
+        plannedState: toDynamicValue(encodeBlock(block, plannedState)),
+        requiresReplace,
         diagnostics: diagsToPb(diags.items),
       };
+    } catch (err) {
+      this.handleUncaughtError("PlanResourceChange", req.typeName, err, diags);
+      // Return proposed-as-planned so Terraform doesn't lose the pending change.
+      return { plannedState: req.proposedNewState, diagnostics: diagsToPb(diags.items) };
     }
-
-    // ---- DELETE (plan_destroy = true means we'll get called here) ----
-    if (proposedState === null && priorState !== null) {
-      return {
-        plannedState: toDynamicValue(null),
-        diagnostics: diagsToPb(diags.items),
-      };
-    }
-
-    // ---- UPDATE ----
-    const prior = priorState!;
-    const proposed = proposedState!;
-
-    const changedFields = new Set<string>(
-      Object.keys(proposed).filter((k) => {
-        if (!(k in attrs)) return false;
-        return !attrs[k].type.semanticallyEqual(prior[k], proposed[k]);
-      })
-    );
-
-    const requiresReplace = [...changedFields]
-      .filter((k) => k in attrs && attrs[k].requiresReplace)
-      .map((k) => ({ steps: [{ attributeName: k }] }));
-
-    const ctx: PlanContext = {
-      diagnostics: diags,
-      typeName: req.typeName,
-      changedFields,
-    };
-
-    let plannedState: State;
-    if (inst.plan) {
-      plannedState = await inst.plan(ctx, { ...prior }, { ...proposed });
-    } else {
-      plannedState = { ...proposed };
-    }
-
-    return {
-      plannedState: toDynamicValue(encodeBlock(block, plannedState)),
-      requiresReplace,
-      diagnostics: diagsToPb(diags.items),
-    };
   }
 
   async ApplyResourceChange(
@@ -514,48 +565,61 @@ export class ProviderServicer {
     _ctx: unknown
   ): Promise<DeepPartial<ApplyResourceChange_Response>> {
     const diags = new Diagnostics();
-    const inst = this.resInstance(req.typeName);
-    const block = inst.getSchema().block;
-
     const rawPrior = readDynamicValue(req.priorState!);
-    const rawPlanned = readDynamicValue(req.plannedState!);
+    try {
+      const inst = this.resInstance(req.typeName);
+      const block = inst.getSchema().block;
 
-    const priorState = rawPrior ? decodeBlock(block, rawPrior) : null;
-    const plannedState = rawPlanned ? decodeBlock(block, rawPlanned) : null;
+      const rawPlanned = readDynamicValue(req.plannedState!);
 
-    let newState: State | null;
+      const priorState = rawPrior ? decodeBlock(block, rawPrior) : null;
+      const plannedState = rawPlanned ? decodeBlock(block, rawPlanned) : null;
 
-    if (priorState === null && plannedState !== null) {
-      // CREATE
-      newState = await inst.create(
-        { diagnostics: diags, typeName: req.typeName },
-        plannedState
-      );
-    } else if (priorState !== null && plannedState === null) {
-      // DELETE
-      await inst.delete({ diagnostics: diags, typeName: req.typeName }, priorState);
-      newState = null;
-    } else if (priorState !== null && plannedState !== null) {
-      // UPDATE
-      const changedFields = new Set(
-        Object.keys(plannedState).filter(
-          (k) => JSON.stringify(priorState[k]) !== JSON.stringify(plannedState[k])
-        )
-      );
-      newState = await inst.update(
-        { diagnostics: diags, typeName: req.typeName, changedFields },
-        priorState,
-        plannedState
-      );
-    } else {
-      diags.addError("Both prior and planned states are null — this is a Terraform bug");
-      return { diagnostics: diagsToPb(diags.items) };
+      let newState: State | null;
+
+      if (priorState === null && plannedState !== null) {
+        // CREATE
+        newState = await inst.create(
+          { diagnostics: diags, typeName: req.typeName },
+          plannedState
+        );
+      } else if (priorState !== null && plannedState === null) {
+        // DELETE
+        await inst.delete({ diagnostics: diags, typeName: req.typeName }, priorState);
+        newState = null;
+      } else if (priorState !== null && plannedState !== null) {
+        // UPDATE
+        const applyAttrs = inst.getSchema().block.attrMap();
+        const applyBlockAttrs = inst.getSchema().block.blockMap();
+        const changedFields = new Set(
+          Object.keys(plannedState).filter((k) => {
+            if (k in applyAttrs) return !applyAttrs[k].type.semanticallyEqual(priorState[k], plannedState[k]);
+            if (k in applyBlockAttrs) return !applyBlockAttrs[k].semanticallyEqual(priorState[k], plannedState[k]);
+            return JSON.stringify(priorState[k]) !== JSON.stringify(plannedState[k]);
+          })
+        );
+        newState = await inst.update(
+          { diagnostics: diags, typeName: req.typeName, changedFields },
+          priorState,
+          plannedState
+        );
+      } else {
+        diags.addError("Both prior and planned states are null — this is a Terraform bug");
+        return { diagnostics: diagsToPb(diags.items) };
+      }
+
+      return {
+        newState: toDynamicValue(newState ? encodeBlockPreserving(block, newState, rawPrior) : null),
+        diagnostics: diagsToPb(diags.items),
+      };
+    } catch (err) {
+      this.handleUncaughtError("ApplyResourceChange", req.typeName, err, diags);
+      // Return prior state on error to avoid data loss; Terraform taints the resource.
+      return {
+        newState: rawPrior ? toDynamicValue(rawPrior) : toDynamicValue(null),
+        diagnostics: diagsToPb(diags.items),
+      };
     }
-
-    return {
-      newState: toDynamicValue(newState ? encodeBlock(block, newState) : null),
-      diagnostics: diagsToPb(diags.items),
-    };
   }
 
   async ImportResourceState(
@@ -563,34 +627,39 @@ export class ProviderServicer {
     _ctx: unknown
   ): Promise<DeepPartial<ImportResourceState_Response>> {
     const diags = new Diagnostics();
-    const inst = this.resInstance(req.typeName);
+    try {
+      const inst = this.resInstance(req.typeName);
 
-    if (!inst.import) {
-      diags.addError(
-        `${req.typeName} does not support import`,
-        `Resource ${req.typeName} has not implemented import()`
-      );
+      if (!inst.import) {
+        diags.addError(
+          `${req.typeName} does not support import`,
+          `Resource ${req.typeName} has not implemented import()`
+        );
+        return { diagnostics: diagsToPb(diags.items) };
+      }
+
+      const block = inst.getSchema().block;
+      const state = await inst.import({ diagnostics: diags, typeName: req.typeName }, req.id);
+
+      if (diags.hasErrors() || state === null) {
+        return { diagnostics: diagsToPb(diags.items) };
+      }
+
+      const imported: ImportResourceState_ImportedResource = {
+        typeName: req.typeName,
+        state: toDynamicValue(encodeBlock(block, state)),
+        private: new Uint8Array(),
+        identity: undefined,
+      };
+
+      return {
+        importedResources: [imported],
+        diagnostics: diagsToPb(diags.items),
+      };
+    } catch (err) {
+      this.handleUncaughtError("ImportResourceState", req.typeName, err, diags);
       return { diagnostics: diagsToPb(diags.items) };
     }
-
-    const block = inst.getSchema().block;
-    const state = await inst.import({ diagnostics: diags, typeName: req.typeName }, req.id);
-
-    if (diags.hasErrors() || state === null) {
-      return { diagnostics: diagsToPb(diags.items) };
-    }
-
-    const imported: ImportResourceState_ImportedResource = {
-      typeName: req.typeName,
-      state: toDynamicValue(encodeBlock(block, state)),
-      private: new Uint8Array(),
-      identity: undefined,
-    };
-
-    return {
-      importedResources: [imported],
-      diagnostics: diagsToPb(diags.items),
-    };
   }
 
   async MoveResourceState(
@@ -616,15 +685,20 @@ export class ProviderServicer {
     _ctx: unknown
   ): Promise<DeepPartial<ReadDataSource_Response>> {
     const diags = new Diagnostics();
-    const inst = this.dsInstance(req.typeName);
-    const block = inst.getSchema().block;
-    const rawConfig = readDynamicValue(req.config!) ?? {};
-    const config = decodeBlock(block, rawConfig) ?? {};
-    const state = await inst.read({ diagnostics: diags, typeName: req.typeName }, config);
-    return {
-      state: toDynamicValue(state ? encodeBlock(block, state) : null),
-      diagnostics: diagsToPb(diags.items),
-    };
+    try {
+      const inst = this.dsInstance(req.typeName);
+      const block = inst.getSchema().block;
+      const rawConfig = readDynamicValue(req.config!) ?? {};
+      const config = decodeBlock(block, rawConfig) ?? {};
+      const state = await inst.read({ diagnostics: diags, typeName: req.typeName }, config);
+      return {
+        state: toDynamicValue(state ? encodeBlock(block, state) : null),
+        diagnostics: diagsToPb(diags.items),
+      };
+    } catch (err) {
+      this.handleUncaughtError("ReadDataSource", req.typeName, err, diags);
+      return { state: toDynamicValue(null), diagnostics: diagsToPb(diags.items) };
+    }
   }
 
   // ---------------------------------------------------------------------------

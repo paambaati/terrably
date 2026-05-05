@@ -163,13 +163,17 @@ interface BaseContext {
 // create, read, delete, import, upgrade — extend BaseContext with no extra fields
 
 interface UpdateContext extends BaseContext {
-  readonly changedFields: Set<string>; // attribute names that differ between prior and planned
+  readonly changedFields: Set<string>; // names of attributes and nested blocks that differ between prior and planned
 }
 
 interface PlanContext extends BaseContext {
-  readonly changedFields: Set<string>;
+  readonly changedFields: Set<string>; // names of attributes and nested blocks that differ between prior and planned
 }
 ```
+
+<Callout type="info">
+`changedFields` uses **semantic equality** per field type. For example, a `types.normalizedJson()` attribute whose key order changed (but whose value is otherwise identical) will **not** appear in `changedFields`. A `"set"` nested block whose items are reordered will also **not** appear. This means you can safely use `changedFields` to decide whether to call a specific API endpoint, without false positives from cosmetic differences.
+</Callout>
 
 ---
 

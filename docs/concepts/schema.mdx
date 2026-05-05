@@ -199,6 +199,52 @@ new Schema([
 ])
 ```
 
+<Callout type="info">
+**SET blocks are order-insensitive.** `"set"` nesting uses semantic equality — two `NestedBlock` values whose items are identical but in a different order are treated as unchanged. Use `"list"` when order matters.
+</Callout>
+
+### `BlockOptions`
+
+Pass `BlockOptions` as the third argument to `new Block(...)` to set documentation or deprecation on the block itself — distinct from per-attribute options.
+
+<TypeTable
+  type={{
+    description: {
+      description: "Human-readable description for this block, shown in `terraform providers schema` and the Terraform Registry.",
+      type: "string",
+      default: '""',
+    },
+    descriptionKind: {
+      description: "Format of the description.",
+      type: '"plain" | "markdown"',
+      default: '"markdown"',
+    },
+    deprecated: {
+      description: "Marks the block as deprecated. Shows a warning when the block is used.",
+      type: "boolean",
+      default: "false",
+    },
+    deprecationMessage: {
+      description: "Custom message shown when the block is deprecated.",
+      type: "string",
+      default: '""',
+    },
+    computed: {
+      description: "The entire block is computed by the provider (advanced use).",
+      type: "boolean",
+      default: "false",
+    },
+  }}
+/>
+
+```typescript
+new NestedBlock("legacy_config", "single", new Block(
+  [new Attribute("endpoint", types.string(), { optional: true })],
+  [],
+  { deprecated: true, deprecationMessage: "Use the top-level endpoint attribute instead." }
+))
+```
+
 ```hcl
 # Terraform config using the tags block
 resource "mycloud_server" "example" {
@@ -227,8 +273,20 @@ import { Schema } from "terrably";
 new Schema(
   attributes: Attribute[] = [],
   blockTypes: NestedBlock[] = [],
-  version: number = 0
+  version: number = 0,
+  blockOpts?: BlockOptions       // optional — description/deprecation for the block itself
 )
 ```
 
 `version` starts at `0`. Increment it whenever the shape of stored state changes (renamed or removed attributes) and implement `Resource.upgrade()` to migrate old state. See [Schema migration](/docs/distribution/schema-migration) for patterns.
+
+Use `blockOpts` to set a description or deprecation message on the resource's top-level block (shown in `terraform providers schema` and the Terraform Registry) –
+
+```typescript
+new Schema(
+  [new Attribute("id", types.string(), { computed: true })],
+  [],
+  1,
+  { description: "Manages a cloud server instance.", deprecated: false }
+)
+```

@@ -51,14 +51,14 @@ void describe("newCommand – scaffolded file structure", () => {
   });
 
   void it("creates package.json", () => {
-    assert.ok(fs.existsSync(path.join(providerDir, "package.json")));
+    assert.ok(fs.existsSync(path.join(providerDir, "package.json")), "package.json should be created");
   });
 
   void it("package.json name is terraform-provider-mycloud", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(providerDir, "package.json"), "utf8")
     ) as { name: string };
-    assert.equal(pkg.name, "terraform-provider-mycloud");
+    assert.equal(pkg.name, "terraform-provider-mycloud", "package name should be terraform-provider-mycloud");
   });
 
   void it("package.json has a terrably dependency", () => {
@@ -69,35 +69,35 @@ void describe("newCommand – scaffolded file structure", () => {
   });
 
   void it("creates tsconfig.json", () => {
-    assert.ok(fs.existsSync(path.join(providerDir, "tsconfig.json")));
+    assert.ok(fs.existsSync(path.join(providerDir, "tsconfig.json")), "tsconfig.json should be created");
   });
 
   void it("creates src/main.ts", () => {
-    assert.ok(fs.existsSync(path.join(providerDir, "src", "main.ts")));
+    assert.ok(fs.existsSync(path.join(providerDir, "src", "main.ts")), "src/main.ts should be created");
   });
 
   void it("creates src/provider.ts", () => {
-    assert.ok(fs.existsSync(path.join(providerDir, "src", "provider.ts")));
+    assert.ok(fs.existsSync(path.join(providerDir, "src", "provider.ts")), "src/provider.ts should be created");
   });
 
   void it("creates src/resources/item.ts", () => {
-    assert.ok(fs.existsSync(path.join(providerDir, "src", "resources", "item.ts")));
+    assert.ok(fs.existsSync(path.join(providerDir, "src", "resources", "item.ts")), "src/resources/item.ts should be created");
   });
 
   void it("creates tf-workspace/main.tf", () => {
-    assert.ok(fs.existsSync(path.join(providerDir, "tf-workspace", "main.tf")));
+    assert.ok(fs.existsSync(path.join(providerDir, "tf-workspace", "main.tf")), "tf-workspace/main.tf should be created");
   });
 
   void it("creates tf-workspace/.terraformrc", () => {
-    assert.ok(fs.existsSync(path.join(providerDir, "tf-workspace", ".terraformrc")));
+    assert.ok(fs.existsSync(path.join(providerDir, "tf-workspace", ".terraformrc")), "tf-workspace/.terraformrc should be created");
   });
 
   void it("creates README.md", () => {
-    assert.ok(fs.existsSync(path.join(providerDir, "README.md")));
+    assert.ok(fs.existsSync(path.join(providerDir, "README.md")), "README.md should be created");
   });
 
   void it("creates bin/.gitkeep placeholder", () => {
-    assert.ok(fs.existsSync(path.join(providerDir, "bin", ".gitkeep")));
+    assert.ok(fs.existsSync(path.join(providerDir, "bin", ".gitkeep")), "bin/.gitkeep placeholder should be created");
   });
 
   void it("src/main.ts imports the generated Provider class", () => {
@@ -147,7 +147,7 @@ void describe("newCommand – name normalisation", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(providerDir, "package.json"), "utf8")
     ) as { name: string };
-    assert.equal(pkg.name, "terraform-provider-gpcloud");
+    assert.equal(pkg.name, "terraform-provider-gpcloud", "package name should be terraform-provider-gpcloud");
     assert.ok(
       !pkg.name.startsWith("terraform-provider-terraform-provider-"),
       "name must not be double-prefixed"
@@ -177,7 +177,7 @@ void describe("newCommand – name normalisation", () => {
       fs.readFileSync(path.join(providerDir, "package.json"), "utf8")
     ) as { name: string };
     // shortName is always lowercased, so the package name should be lowercase
-    assert.equal(pkg.name, "terraform-provider-lowercase");
+    assert.equal(pkg.name, "terraform-provider-lowercase", "package name should be lowercased");
   });
 });
 
@@ -206,7 +206,7 @@ void describe("newCommand – error cases", () => {
     } catch (e) {
       if (!(e instanceof ProcessExitError)) throw e;
     } finally {
-      assert.equal(restore(), 1);
+      assert.equal(restore(), 1, "exit code should be 1 when target directory already exists");
     }
   });
 });

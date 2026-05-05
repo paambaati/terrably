@@ -1,0 +1,15 @@
+terraform {
+  required_providers {
+    dummycloud = { source = "example/dummycloud" }
+  }
+}
+
+provider "dummycloud" {
+  # Points at a port that has no listener — used to test panic → diagnostic handling.
+  api_url = "http://127.0.0.1:1"
+}
+
+resource "dummycloud_server" "web" {
+  name = "web-01"
+  size = "small"
+}

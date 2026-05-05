@@ -40,7 +40,7 @@
     "prepack": "copyfiles ../../README.md ./README.md",
     "postpack": "shx rm ./README.md",
     "prepare": "pnpm run build",
-    "build": "pnpm run proto:gen && tsc && cp -r src/cli/templates dist/src/cli/",
+    "build": "pnpm run proto:gen && tsc -p tsconfig.build.json && cp -r src/cli/templates dist/src/cli/",
     "dev": "tsc --watch",
     "lint": "oxlint --type-aware --type-check src/",
     "lint:fix": "oxlint --fix src/",

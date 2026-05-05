@@ -22,6 +22,8 @@ export interface Server {
   size: string;
   status: string;
   created_at: string;
+  tags: unknown;
+  metadata: unknown;
 }
 
 const db = new Map<string, Server>();
@@ -35,7 +37,7 @@ app.get("/servers", (c) => {
 
 // Create
 app.post("/servers", async (c) => {
-  const { name, size } = await c.req.json<{ name?: string; size?: string }>();
+  const { name, size, tags, metadata } = await c.req.json<{ name?: string; size?: string; tags?: unknown; metadata?: unknown }>();
   if (!name || !size) {
     return c.json({ error: "name and size are required" }, 400);
   }
@@ -46,6 +48,8 @@ app.post("/servers", async (c) => {
     size,
     status: "running",
     created_at: new Date().toISOString(),
+    tags: tags !== undefined ? tags : null,
+    metadata: metadata !== undefined ? metadata : null,
   };
   db.set(id, server);
   return c.json(server, 201);
@@ -66,9 +70,11 @@ app.put("/servers/:id", async (c) => {
   if (!server) {
     return c.json({ error: "not found" }, 404);
   }
-  const { name, size } = await c.req.json<{ name?: string; size?: string }>();
+  const { name, size, tags, metadata } = await c.req.json<{ name?: string; size?: string; tags?: unknown; metadata?: unknown }>();
   if (name) server.name = name;
   if (size) server.size = size;
+  if (tags !== undefined) server.tags = tags;
+  if (metadata !== undefined) server.metadata = metadata;
   db.set(server.id, server);
   return c.json(server);
 });
