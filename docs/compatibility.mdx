@@ -195,22 +195,22 @@ Store any plan-time state as a computed attribute in the resource schema. This i
 
 ## Capability summary
 
-| Terraform feature | terrably | Notes |
-|---|---|---|
-| Managed resources | ✅ | Full CRUD + plan hook |
-| Data sources | ✅ | |
-| Provider functions | ✅ | Terraform ≥ 1.8 |
-| `terraform import` | ✅ | Implement `import()` |
-| State schema migration | ✅ | Implement `upgrade()` |
-| `object` attribute type | ✅ | All four nesting modes; use `ObjectAttribute` |
-| `tuple` type | ❌ | Use separate attributes or `list` + validation |
-| `dynamic` type | ❌ | Use `normalizedJson` or explicit schema |
-| Ephemeral resources | ❌ | Terraform ≥ 1.10 |
-| `moved` block (cross-type) | ❌ | `MoveResourceState` not implemented |
-| Private provider data | ❌ | Use a computed attribute instead |
-| Resource identity schemas | ❌ | Returns empty; advanced use only |
-| List resources | ❌ | Terraform `list` command |
-| State stores | ❌ | Provider-managed state backends |
-| Actions | ❌ | Terraform ≥ 1.x, experimental |
-| `GenerateResourceConfig` | ❌ | Auto-generate HCL from imported resource |
-| Provider meta schema | ❌ | Module-level provider config |
+| Terraform feature | Supported | Notes / Workaround | Tracking issue |
+|---|---|---|---|
+| Managed resources | ✅ | | |
+| Data sources | ✅ | | |
+| Provider functions | ✅ | | |
+| `terraform import` | ✅ | | |
+| State schema migration | ✅ | | |
+| `object` attribute type | ✅ | | |
+| `tuple` type | ❌ | Use separate attributes or `list` + validation | [#19](https://github.com/paambaati/terrably/issues/19) |
+| `dynamic` type | ❌ | Use `normalizedJson` or explicit schema | [#20](https://github.com/paambaati/terrably/issues/20) |
+| Ephemeral resources | ❌ | Not prioritised yet | [#21](https://github.com/paambaati/terrably/issues/21) |
+| `moved` block (cross-type) | ❌ | Not prioritised yet |
+| Private provider data | ❌ | Use a computed attribute instead | [#23](https://github.com/paambaati/terrably/issues/23) |
+| Resource identity schemas | ❌ | Returns empty; not prioritised yet | [#24](https://github.com/paambaati/terrably/issues/24) |
+| List resources | ❌ | Terraform `list` command; not prioritised yet | [#25](https://github.com/paambaati/terrably/issues/25) |
+| State stores | ❌ | Provider-managed state backends; not prioritised yet | |
+| Actions | ❌ | Fairly new; not prioritised yet | [#26](https://github.com/paambaati/terrably/issues/26) |
+| `GenerateResourceConfig` | ❌ | Auto-generate HCL from imported resource | |
+| Provider meta schema | ❌ | Module-level provider config | |
