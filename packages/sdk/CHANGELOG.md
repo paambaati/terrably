@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.0.16](https://github.com/paambaati/terrably/compare/v0.0.15...v0.0.16) (2026-05-05)
+
+
+### Features
+
+* correctness fixes ([4124d2c](https://github.com/paambaati/terrably/commit/4124d2c5a3e851b38404195f9f4511ee9e3269e3))
+* more correctness fixes ([79d25fe](https://github.com/paambaati/terrably/commit/79d25feb9577cc675efc3d63ac2e6e529d14e8f3))
+* more correctness fixes - wrap all RPC handlers in try/catch for error diagnostics and old-state encoding preservation to avoid spurious diffs ([4801c42](https://github.com/paambaati/terrably/commit/4801c42f14908fcdf61d63b96ae35c958c099ae7))
+* support 'object' syntax ([7fa1e5a](https://github.com/paambaati/terrably/commit/7fa1e5a43bbad65cdbf11de85be866f9b0d37c56))
+* support BlockOptions correctly ([0ed214f](https://github.com/paambaati/terrably/commit/0ed214f4ac200a48b8fcd74f7ab32105775c5c42))
+
+
+### Bug Fixes
+
+* **publish:** remove test files from publish tarball ([bf6592d](https://github.com/paambaati/terrably/commit/bf6592da22289e9ed4526fcbffca7d2ed906c0c1))
+
 ## [0.0.15](https://github.com/paambaati/terrably/compare/v0.0.14...v0.0.15) (2026-04-30)
 
 
