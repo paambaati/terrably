@@ -1,3 +1,222 @@
+# Compatibility (/docs/compatibility)
+
+
+
+This page documents the current feature support matrix for terrably compared to the [Terraform Plugin Protocol](https://github.com/hashicorp/terraform-plugin-framework) v6 and the [official Go SDK](https://github.com/hashicorp/terraform-plugin-sdk).
+
+<Callout type="warn">
+  The items marked **Not supported** will cause Terraform to surface a generic error or silently ignore the feature. If your provider requires one of these patterns, please open an issue.
+</Callout>
+
+***
+
+## Supported today [#supported-today]
+
+| Feature                                                 | Notes                                                               |
+| ------------------------------------------------------- | ------------------------------------------------------------------- |
+| Managed resources (CRUD + plan hook)                    | Full lifecycle: create, read, update, delete, plan                  |
+| Data sources                                            | Read-only                                                           |
+| Provider functions (Terraform ≥ 1.8)                    | Parameters, variadic, return type, deprecation                      |
+| `terraform import`                                      | Implement `import()` on a resource                                  |
+| State schema migration (`upgrade`)                      | Increment `version` and implement `upgrade()`                       |
+| `requires_replace` attributes                           | Force-replaces on attribute change                                  |
+| `sensitive` attributes                                  | Redacted in plan output                                             |
+| `write_only` attributes (Terraform ≥ 1.11)              | Accepted but never stored in state                                  |
+| Block-level descriptions and deprecation                | `BlockOptions` on `Block` / `Schema` constructor                    |
+| Nested blocks: single, list, set, map, group            | All five nesting modes                                              |
+| All scalar types: string, number, bool                  | —                                                                   |
+| Collection types: list, set, map                        | —                                                                   |
+| `object` attribute type: single, list, set, map nesting | Use `ObjectAttribute` — HCL `=` syntax, not block syntax            |
+| `normalizedJson` type                                   | JSON stored as a sorted-key string; key-order changes are not diffs |
+| Structured logging                                      | `createLogger()` / `TF_LOG_PROVIDER`                                |
+
+***
+
+### `object` attribute type [#object-attribute-type]
+
+Use `ObjectAttribute` to define a typed object on a resource attribute. This uses HCL assignment (`=`) syntax, unlike `NestedBlock` which uses block syntax.
+
+**Provider schema (TypeScript)**
+
+```typescript
+import { Attribute, ObjectAttribute, types } from "terrably";
+
+new ObjectAttribute("metadata", [
+  new Attribute("owner",       types.string(), { optional: true, computed: true }),
+  new Attribute("environment", types.string(), { optional: true, computed: true }),
+], "single", { optional: true, computed: true })
+```
+
+**Terraform configuration (HCL)**
+
+```hcl
+resource "mycloud_server" "web" {
+  name = "web-01"
+
+  metadata = {
+    owner       = "alice"
+    environment = "prod"
+  }
+}
+```
+
+**Nesting modes**
+
+| Mode       | HCL shape                            | TypeScript nesting arg |
+| ---------- | ------------------------------------ | ---------------------- |
+| `"single"` | `attr = { key = "val" }`             | `"single"` (default)   |
+| `"list"`   | `attr = [{ key = "val" }, ...]`      | `"list"`               |
+| `"set"`    | `attr = [{ key = "val" }, ...]`      | `"set"`                |
+| `"map"`    | `attr = { label = { key = "val" } }` | `"map"`                |
+
+For `"set"` nesting, terrably compares elements field-by-field (order-insensitive) so a reordered set does not appear as a plan diff.
+
+**`ObjectAttribute` vs `NestedBlock`**
+
+Both represent a group of typed sub-fields. The difference is purely syntactic –
+
+|                       | `ObjectAttribute`       | `NestedBlock`               |
+| --------------------- | ----------------------- | --------------------------- |
+| HCL syntax            | `attr = { ... }`        | `attr { ... }`              |
+| SDK class             | `ObjectAttribute`       | `NestedBlock` / `Block`     |
+| Supports `null`       | Yes (if `optional`)     | No — blocks cannot be null  |
+| Terraform type system | `object(...)` attribute | Block (no type in protocol) |
+
+***
+
+## Not supported [#not-supported]
+
+### `tuple` type [#tuple-type]
+
+A fixed-length, heterogeneously-typed list — e.g. `tuple([string, number, bool])`.
+
+**What you cannot write today**
+
+```hcl
+resource "mycloud_route" "example" {
+  # "range" is [start_port, end_port] — both numbers but positional semantics
+  range = [8080, 8090]
+}
+```
+
+**Workaround**
+
+Use a `list(number)` attribute with a `validate()` check, or two separate attributes (`range_start`, `range_end`).
+
+***
+
+### `dynamic` type [#dynamic-type]
+
+An attribute whose type is not known until runtime (`cty.DynamicPseudoType` in Go). Terraform serialises it with both the type and value in the `msgpack` payload.
+
+**What you cannot write today**
+
+```hcl
+resource "mycloud_config" "example" {
+  # "value" can be a string, number, list, or object depending on context
+  value = { key = "hello" }
+}
+```
+
+**Workaround**
+
+Use `normalizedJson` to store the value as a JSON string, or use a `NestedBlock` to represent the structure explicitly.
+
+***
+
+### Ephemeral resources (Terraform ≥ 1.10) [#ephemeral-resources-terraform--110]
+
+Resources whose values are available during plan/apply but are **never written to state**. Designed for short-lived secrets (API tokens, one-time passwords, TLS certificates).
+
+**What you cannot write today**
+
+```hcl
+# provider.tf
+ephemeral "mycloud_token" "deploy" {
+  role = "deployer"
+  ttl  = "15m"
+}
+
+resource "mycloud_server" "example" {
+  api_token = ephemeral.mycloud_token.deploy.value
+}
+```
+
+Attempting to use an ephemeral resource with a terrably provider will result in –
+
+```
+Error: Ephemeral resources not supported
+```
+
+**There is no workaround yet.**
+
+Ephemeral resources require implementing the `OpenEphemeralResource`, `RenewEphemeralResource`, and `CloseEphemeralResource` RPCs plus advertising the capability in `GetMetadata`.
+
+***
+
+### `MoveResourceState` (renamed / moved resources) [#moveresourcestate-renamed--moved-resources]
+
+Allows Terraform's [`moved` block](https://developer.hashicorp.com/terraform/language/moved) to move state from one resource type to another across providers — for example, renaming a resource type in a new major provider version.
+
+**What you cannot write today**
+
+```hcl
+# After renaming mycloud_instance → mycloud_server:
+moved {
+  from = mycloud_instance.web
+  to   = mycloud_server.web
+}
+```
+
+Cross-type moves between different resource types within the same provider **do** work through normal Terraform state manipulation; what is not supported is provider-assisted cross-type moves where the provider validates and transforms state.
+
+Attempting a cross-provider `moved` block that reaches this RPC will result in –
+
+```
+Error: MoveResourceState is not implemented
+```
+
+**There is no workaround yet.**
+
+***
+
+### Private provider data (per-resource opaque bytes) [#private-provider-data-per-resource-opaque-bytes]
+
+Terraform passes an opaque `[]byte` blob (`planned_private` / `private`) between plan and apply on a per-resource basis. Go providers use this to store information that should influence apply but must not be visible to users (e.g. the ETag of a resource fetched at plan time, or a lock token).
+
+**What you cannot do today**
+
+The `private` field is silently discarded — terrably always returns `private: new Uint8Array()`. If you return a value from `plan()` that depends on external state fetched at plan time, you cannot safely pass it to `apply()` through private data.
+
+**Workaround**
+
+Store any plan-time state as a computed attribute in the resource schema. This is slightly less clean (it appears in `terraform show`) but functionally equivalent for most use cases.
+
+***
+
+## Capability summary [#capability-summary]
+
+| Terraform feature          | terrably | Notes                                          |
+| -------------------------- | -------- | ---------------------------------------------- |
+| Managed resources          | ✅        | Full CRUD + plan hook                          |
+| Data sources               | ✅        |                                                |
+| Provider functions         | ✅        | Terraform ≥ 1.8                                |
+| `terraform import`         | ✅        | Implement `import()`                           |
+| State schema migration     | ✅        | Implement `upgrade()`                          |
+| `object` attribute type    | ✅        | All four nesting modes; use `ObjectAttribute`  |
+| `tuple` type               | ❌        | Use separate attributes or `list` + validation |
+| `dynamic` type             | ❌        | Use `normalizedJson` or explicit schema        |
+| Ephemeral resources        | ❌        | Terraform ≥ 1.10                               |
+| `moved` block (cross-type) | ❌        | `MoveResourceState` not implemented            |
+| Private provider data      | ❌        | Use a computed attribute instead               |
+| Resource identity schemas  | ❌        | Returns empty; advanced use only               |
+| List resources             | ❌        | Terraform `list` command                       |
+| State stores               | ❌        | Provider-managed state backends                |
+| Actions                    | ❌        | Terraform ≥ 1.x, experimental                  |
+| `GenerateResourceConfig`   | ❌        | Auto-generate HCL from imported resource       |
+| Provider meta schema       | ❌        | Module-level provider config                   |
+
+
 # Getting started (/docs/getting-started)
 
 
@@ -6,10 +225,10 @@
 
 terrably supports two runtimes.
 
-| Runtime | Version  | Notes                                                                                                                 |
-| ------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
-| Node.js | ≥ 25.5.0 | Uses `node --build-sea`; requires a native runner per platform for CI                                                 |
-| Bun     | ≥ 0.6.0  | Uses `bun build --compile`; supports cross-compilation in a single CI job, and usually produces a small output binary |
+| Runtime | Version  | Notes                                                                                                                   |
+| ------- | -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Node.js | ≥ 25.5.0 | Uses `node --build-sea`; requires a native runner per platform for CI                                                   |
+| Bun     | ≥ 0.6.0  | Uses `bun build --compile`; supports cross-compilation in a single CI job, and usually produces a smaller output binary |
 
 <Steps>
   <Step>
@@ -863,13 +1082,17 @@ interface BaseContext {
 // create, read, delete, import, upgrade — extend BaseContext with no extra fields
 
 interface UpdateContext extends BaseContext {
-  readonly changedFields: Set<string>; // attribute names that differ between prior and planned
+  readonly changedFields: Set<string>; // names of attributes and nested blocks that differ between prior and planned
 }
 
 interface PlanContext extends BaseContext {
-  readonly changedFields: Set<string>;
+  readonly changedFields: Set<string>; // names of attributes and nested blocks that differ between prior and planned
 }
 ```
+
+<Callout type="info">
+  `changedFields` uses **semantic equality** per field type. For example, a `types.normalizedJson()` attribute whose key order changed (but whose value is otherwise identical) will **not** appear in `changedFields`. A `"set"` nested block whose items are reordered will also **not** appear. This means you can safely use `changedFields` to decide whether to call a specific API endpoint, without false positives from cosmetic differences.
+</Callout>
 
 ***
 
@@ -1132,6 +1355,52 @@ new Schema([
 ])
 ```
 
+<Callout type="info">
+  **SET blocks are order-insensitive.** `"set"` nesting uses semantic equality — two `NestedBlock` values whose items are identical but in a different order are treated as unchanged. Use `"list"` when order matters.
+</Callout>
+
+### `BlockOptions` [#blockoptions]
+
+Pass `BlockOptions` as the third argument to `new Block(...)` to set documentation or deprecation on the block itself — distinct from per-attribute options.
+
+<TypeTable
+  type="{
+  description: {
+    description: &#x22;Human-readable description for this block, shown in `terraform providers schema` and the Terraform Registry.&#x22;,
+    type: &#x22;string&#x22;,
+    default: '&#x22;&#x22;',
+  },
+  descriptionKind: {
+    description: &#x22;Format of the description.&#x22;,
+    type: '&#x22;plain&#x22; | &#x22;markdown&#x22;',
+    default: '&#x22;markdown&#x22;',
+  },
+  deprecated: {
+    description: &#x22;Marks the block as deprecated. Shows a warning when the block is used.&#x22;,
+    type: &#x22;boolean&#x22;,
+    default: &#x22;false&#x22;,
+  },
+  deprecationMessage: {
+    description: &#x22;Custom message shown when the block is deprecated.&#x22;,
+    type: &#x22;string&#x22;,
+    default: '&#x22;&#x22;',
+  },
+  computed: {
+    description: &#x22;The entire block is computed by the provider (advanced use).&#x22;,
+    type: &#x22;boolean&#x22;,
+    default: &#x22;false&#x22;,
+  },
+}"
+/>
+
+```typescript
+new NestedBlock("legacy_config", "single", new Block(
+  [new Attribute("endpoint", types.string(), { optional: true })],
+  [],
+  { deprecated: true, deprecationMessage: "Use the top-level endpoint attribute instead." }
+))
+```
+
 ```hcl
 # Terraform config using the tags block
 resource "mycloud_server" "example" {
@@ -1160,11 +1429,23 @@ import { Schema } from "terrably";
 new Schema(
   attributes: Attribute[] = [],
   blockTypes: NestedBlock[] = [],
-  version: number = 0
+  version: number = 0,
+  blockOpts?: BlockOptions       // optional — description/deprecation for the block itself
 )
 ```
 
 `version` starts at `0`. Increment it whenever the shape of stored state changes (renamed or removed attributes) and implement `Resource.upgrade()` to migrate old state. See [Schema migration](/docs/distribution/schema-migration) for patterns.
+
+Use `blockOpts` to set a description or deprecation message on the resource's top-level block (shown in `terraform providers schema` and the Terraform Registry) –
+
+```typescript
+new Schema(
+  [new Attribute("id", types.string(), { computed: true })],
+  [],
+  1,
+  { description: "Manages a cloud server instance.", deprecated: false }
+)
+```
 
 
 # Debugging & troubleshooting (/docs/development/debugging)
@@ -1628,54 +1909,6 @@ API_PID=$!
 node --test dist/tests/server.test.js
 
 kill $API_PID
-```
-
-***
-
-## End-to-end tests [#end-to-end-tests]
-
-The E2E tests use the built-in `node:test` runner. Three suites run against a real Terraform binary –
-
-| Suite                           | Provider mode                                                                                                                                 | Binary            |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| `provider: dev mode`            | `tsx` + [`TF_REATTACH_PROVIDERS`](https://developer.hashicorp.com/terraform/plugin/debugging#running-terraform-with-a-provider-in-debug-mode) | TypeScript source |
-| `provider: Node SEA binary`     | standalone binary (Node.js SEA)                                                                                                               | `bin/`            |
-| `provider: Bun compiled binary` | standalone binary (`bun --compile`)                                                                                                           | `bin-bun/`        |
-
-<Callout type="warn">
-  The binary suites require the provider binaries to be built first. They also require `terraform` to be on your `PATH`. The Bun suite is skipped automatically if `bun` is not on your `PATH`.
-</Callout>
-
-### Prerequisites [#prerequisites]
-
-<Steps>
-  <Step>
-    ### Build the reference provider binaries [#build-the-reference-provider-binaries]
-
-    ```bash
-    # Node SEA binary → bin/
-    pnpm run build:binary
-
-    # Bun compiled binary → bin-bun/ (requires bun in PATH)
-    pnpm run build:binary:bun
-    ```
-
-    The `pretest` script runs `ensure-binary.mjs` automatically before `pnpm run test`, so you only need to run these manually when you change provider source.
-  </Step>
-
-  <Step>
-    ### Confirm Terraform is available [#confirm-terraform-is-available]
-
-    ```bash
-    terraform version
-    ```
-  </Step>
-</Steps>
-
-### Run the end-to-end tests [#run-the-end-to-end-tests]
-
-```bash
-pnpm run test
 ```
 
 

@@ -9,7 +9,7 @@
   - [Provider-defined functions](/docs/concepts/functions): Expose pure, stateless functions callable from Terraform configuration with provider::name::function().
 - Development
   - [Local testing](/docs/development/local-testing): Two workflows for iterating on your provider locally — dev_overrides for daily development, and dev mode for attaching a debugger.
-  - [Testing](/docs/development/testing): Unit testing resource logic with node:test, and running the full end-to-end suite against a real Terraform binary.
+  - [Testing](/docs/development/testing): Unit testing resource logic with node:test.
   - [Debugging & troubleshooting](/docs/development/debugging): Attach a Node.js debugger, read structured provider logs, and fix common issues.
   - [Native addons](/docs/development/native-addons): How native .node addons are handled differently by the Node.js SEA and Bun build paths.
 - Reference
@@ -21,3 +21,4 @@
   - [CI release workflow](/docs/distribution/ci): Multi-platform GitHub Actions workflow that builds a native binary for each target platform, then packages and publishes a signed GitHub Release.
   - [Terraform Registry](/docs/distribution/registry): Repository naming, GPG key registration, connecting to the Terraform Registry, and generating provider documentation.
   - [Schema migration](/docs/distribution/schema-migration): Increment schema version, implement upgrade() to migrate stored state, and common patterns for renaming, splitting, and removing attributes.
+- [Compatibility](/docs/compatibility): Which Terraform provider SDK features terrably supports today, and which patterns are not yet possible.
