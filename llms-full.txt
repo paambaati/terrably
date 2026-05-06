@@ -671,59 +671,11 @@ export class MyCloudProvider implements Provider {
 
 ## `FunctionSignature` [#functionsignature]
 
-<TypeTable
-  type="{
-  parameters: {
-    description: &#x22;Ordered list of named positional parameters.&#x22;,
-    type: &#x22;FunctionParameter[]&#x22;,
-  },
-  returnType: {
-    description: &#x22;The return type of the function.&#x22;,
-    type: &#x22;FunctionReturn&#x22;,
-  },
-  variadicParameter: {
-    description: &#x22;Optional. Accepts zero or more additional arguments of this type appended after positional ones.&#x22;,
-    type: &#x22;FunctionParameter&#x22;,
-  },
-  summary: {
-    description: &#x22;Short description shown in `terraform providers schema`.&#x22;,
-    type: &#x22;string&#x22;,
-  },
-  description: {
-    description: &#x22;Longer description.&#x22;,
-    type: &#x22;string&#x22;,
-  },
-  descriptionKind: {
-    description: &#x22;Format of description.&#x22;,
-    type: '&#x22;plain&#x22; | &#x22;markdown&#x22;',
-    default: '&#x22;markdown&#x22;',
-  },
-  deprecationMessage: {
-    description: &#x22;Set to deprecate the function.&#x22;,
-    type: &#x22;string&#x22;,
-  },
-}"
-/>
+<AutoTypeTable path="../sdk/src/interfaces.ts" name="FunctionSignature" />
 
 ## `FunctionParameter` [#functionparameter]
 
-<TypeTable
-  type="{
-  name: { description: &#x22;Parameter name.&#x22;, type: &#x22;string&#x22; },
-  type: { description: &#x22;Any `TfType` — same types used in schema attributes.&#x22;, type: &#x22;TfType&#x22; },
-  description: { description: &#x22;Parameter description.&#x22;, type: &#x22;string&#x22; },
-  allowNullValue: {
-    description: &#x22;If false (default), Terraform errors when the caller passes null.&#x22;,
-    type: &#x22;boolean&#x22;,
-    default: &#x22;false&#x22;,
-  },
-  allowUnknownValues: {
-    description: &#x22;If false (default), Terraform skips the call when any arg is unknown.&#x22;,
-    type: &#x22;boolean&#x22;,
-    default: &#x22;false&#x22;,
-  },
-}"
-/>
+<AutoTypeTable path="../sdk/src/interfaces.ts" name="FunctionParameter" />
 
 ## Variadic functions [#variadic-functions]
 
@@ -1252,60 +1204,7 @@ new Attribute(name: string, type: TfType, options?: AttributeOptions)
 
 ### `AttributeOptions` [#attributeoptions]
 
-<TypeTable
-  type="{
-  required: {
-    description: &#x22;User must provide this attribute in their config.&#x22;,
-    type: &#x22;boolean&#x22;,
-    default: &#x22;false&#x22;,
-  },
-  optional: {
-    description: &#x22;User may provide this attribute.&#x22;,
-    type: &#x22;boolean&#x22;,
-    default: &#x22;false&#x22;,
-  },
-  computed: {
-    description: &#x22;Provider computes this value. Cannot be set by the user unless also `optional`.&#x22;,
-    type: &#x22;boolean&#x22;,
-    default: &#x22;false&#x22;,
-  },
-  sensitive: {
-    description: &#x22;Value is redacted in plan output and stored encrypted in state. See [sensitive data in state](https://developer.hashicorp.com/terraform/language/state/sensitive-data).&#x22;,
-    type: &#x22;boolean&#x22;,
-    default: &#x22;false&#x22;,
-  },
-  requiresReplace: {
-    description: &#x22;Changing this attribute [destroys and recreates the resource](https://developer.hashicorp.com/terraform/plugin/framework/resources/plan-modification#requiresreplace).&#x22;,
-    type: &#x22;boolean&#x22;,
-    default: &#x22;false&#x22;,
-  },
-  description: {
-    description: &#x22;Shown in `terraform providers schema`.&#x22;,
-    type: &#x22;string&#x22;,
-    default: '&#x22;&#x22;',
-  },
-  descriptionKind: {
-    description: &#x22;Format of the description.&#x22;,
-    type: '&#x22;plain&#x22; | &#x22;markdown&#x22;',
-    default: '&#x22;markdown&#x22;',
-  },
-  deprecated: {
-    description: &#x22;Shows a deprecation warning when the attribute is used.&#x22;,
-    type: &#x22;boolean&#x22;,
-    default: &#x22;false&#x22;,
-  },
-  deprecationMessage: {
-    description: &#x22;Custom deprecation text.&#x22;,
-    type: &#x22;string&#x22;,
-    default: '&#x22;&#x22;',
-  },
-  default: {
-    description: &#x22;Default value used during planning when the attribute is not set.&#x22;,
-    type: &#x22;unknown&#x22;,
-    default: &#x22;undefined&#x22;,
-  },
-}"
-/>
+<AutoTypeTable path="../sdk/src/schema.ts" name="AttributeOptions" />
 
 **Common patterns**
 
@@ -1379,35 +1278,7 @@ new Schema([
 
 Pass `BlockOptions` as the third argument to `new Block(...)` to set documentation or deprecation on the block itself — distinct from per-attribute options.
 
-<TypeTable
-  type="{
-  description: {
-    description: &#x22;Human-readable description for this block, shown in `terraform providers schema` and the Terraform Registry.&#x22;,
-    type: &#x22;string&#x22;,
-    default: '&#x22;&#x22;',
-  },
-  descriptionKind: {
-    description: &#x22;Format of the description.&#x22;,
-    type: '&#x22;plain&#x22; | &#x22;markdown&#x22;',
-    default: '&#x22;markdown&#x22;',
-  },
-  deprecated: {
-    description: &#x22;Marks the block as deprecated. Shows a warning when the block is used.&#x22;,
-    type: &#x22;boolean&#x22;,
-    default: &#x22;false&#x22;,
-  },
-  deprecationMessage: {
-    description: &#x22;Custom message shown when the block is deprecated.&#x22;,
-    type: &#x22;string&#x22;,
-    default: '&#x22;&#x22;',
-  },
-  computed: {
-    description: &#x22;The entire block is computed by the provider (advanced use).&#x22;,
-    type: &#x22;boolean&#x22;,
-    default: &#x22;false&#x22;,
-  },
-}"
-/>
+<AutoTypeTable path="../sdk/src/schema.ts" name="BlockOptions" />
 
 ```typescript
 new NestedBlock("legacy_config", "single", new Block(
@@ -2878,23 +2749,7 @@ serve(provider: Provider, opts?: ServeOptions): Promise<void>
 
 ## `ServeOptions` [#serveoptions]
 
-<TypeTable
-  type="{
-  socketPath: {
-    description: &#x22;Unix socket path to listen on. Defaults to an auto-generated path under `os.tmpdir()`.&#x22;,
-    type: &#x22;string&#x22;,
-  },
-  dev: {
-    description: &#x22;Dev mode: use an insecure socket and print the `TF_REATTACH_PROVIDERS` export instead of the handshake line. Equivalent to `TF_PLUGIN_DEBUG=1`.&#x22;,
-    type: &#x22;boolean&#x22;,
-    default: &#x22;false&#x22;,
-  },
-  protoDir: {
-    description: &#x22;Path to directory containing the `.proto` files. Defaults to the `proto/` directory bundled with terrably. Override when using a custom build pipeline.&#x22;,
-    type: &#x22;string&#x22;,
-  },
-}"
-/>
+<AutoTypeTable path="../sdk/src/serve.ts" name="ServeOptions" />
 
 ***
 
