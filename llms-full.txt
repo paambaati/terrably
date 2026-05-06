@@ -537,8 +537,12 @@ Providers compile into self-contained binaries. Operators run `terraform apply` 
     npx terrably new mycloud
     cd terraform-provider-mycloud
     npm install
+
     npm run build
     # → bin/terraform-provider-mycloud (JS runtime embedded)
+
+    npm run publish
+    # → Provider published to Terraform Registry
     ```
   </CodeBlockTab>
 
@@ -548,8 +552,12 @@ Providers compile into self-contained binaries. Operators run `terraform apply` 
     pnpm dlx terrably new mycloud
     cd terraform-provider-mycloud
     pnpm install
+
     pnpm run build
     # → bin/terraform-provider-mycloud (JS runtime embedded)
+
+    pnpm run publish
+    # → Provider published to Terraform Registry
     ```
   </CodeBlockTab>
 
@@ -559,8 +567,12 @@ Providers compile into self-contained binaries. Operators run `terraform apply` 
     bunx terrably new mycloud
     cd terraform-provider-mycloud
     bun install
+
     bun build
     # → bin/terraform-provider-mycloud (JS runtime embedded)
+
+    bun publish
+    # → Provider published to Terraform Registry
     ```
   </CodeBlockTab>
 
@@ -570,8 +582,12 @@ Providers compile into self-contained binaries. Operators run `terraform apply` 
     yarn dlx terrably new mycloud
     cd terraform-provider-mycloud
     yarn install
+
     yarn build
     # → bin/terraform-provider-mycloud (JS runtime embedded)
+
+    yarn publish
+    # → Provider published to Terraform Registry
     ```
   </CodeBlockTab>
 </CodeBlockTabs>
