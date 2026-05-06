@@ -45,7 +45,12 @@ const GO_PLUGIN_CORE_VERSION = 1;
 // ---------------------------------------------------------------------------
 
 export interface ServeOptions {
+  /** Unix socket path to listen on. Defaults to an auto-generated path under `os.tmpdir()`. */
   socketPath?: string;
+  /**
+   * Dev mode: use an insecure socket and print the `TF_REATTACH_PROVIDERS` export
+   * instead of the handshake line. Equivalent to `TF_PLUGIN_DEBUG=1`. @defaultValue `false`
+   */
   dev?: boolean;
   /**
    * Override the directory from which the three tfplugin6 `.proto` files are

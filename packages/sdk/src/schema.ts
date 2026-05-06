@@ -7,19 +7,27 @@ import { Unknown } from "./types.js";
 export type DescriptionKind = "plain" | "markdown";
 
 export interface AttributeOptions {
+  /** Shown in `terraform providers schema`. @defaultValue `""` */
   description?: string;
+  /** Format of the description. @defaultValue `"markdown"` */
   descriptionKind?: DescriptionKind;
+  /** User must provide this attribute in their config. @defaultValue `false` */
   required?: boolean;
+  /** User may provide this attribute. @defaultValue `false` */
   optional?: boolean;
+  /** Provider computes this value. Cannot be set by the user unless also `optional`. @defaultValue `false` */
   computed?: boolean;
+  /** Value is redacted in plan output and stored encrypted in state. @defaultValue `false` */
   sensitive?: boolean;
+  /** Shows a deprecation warning when the attribute is used. @defaultValue `false` */
   deprecated?: boolean;
+  /** Custom deprecation text. @defaultValue `""` */
   deprecationMessage?: string;
-  /** Changing this attribute forces resource replacement. */
+  /** Changing this attribute [destroys and recreates the resource](https://developer.hashicorp.com/terraform/plugin/framework/resources/plan-modification#requiresreplace). @defaultValue `false` */
   requiresReplace?: boolean;
-  /** Default value used in plan for computed+not-set attributes. */
+  /** Default value used during planning when the attribute is not set. */
   default?: unknown;
-  /** Write-only attribute — value is accepted but never stored in state (Terraform ≥ 1.11). */
+  /** Write-only attribute — value is accepted but never stored in state (Terraform ≥ 1.11). @defaultValue `false` */
   writeOnly?: boolean;
 }
 
@@ -346,10 +354,15 @@ export class NestedBlock {
 }
 
 export interface BlockOptions {
+  /** Human-readable description for this block, shown in `terraform providers schema` and the Terraform Registry. @defaultValue `""` */
   description?: string;
+  /** Format of the description. @defaultValue `"markdown"` */
   descriptionKind?: DescriptionKind;
+  /** Marks the block as deprecated. Shows a warning when the block is used. @defaultValue `false` */
   deprecated?: boolean;
+  /** Custom message shown when the block is deprecated. @defaultValue `""` */
   deprecationMessage?: string;
+  /** The entire block is computed by the provider (advanced use). @defaultValue `false` */
   computed?: boolean;
 }
 

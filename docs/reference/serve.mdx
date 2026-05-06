@@ -13,23 +13,7 @@ serve(provider: Provider, opts?: ServeOptions): Promise<void>
 
 ## `ServeOptions`
 
-<TypeTable
-  type={{
-    socketPath: {
-      description: "Unix socket path to listen on. Defaults to an auto-generated path under `os.tmpdir()`.",
-      type: "string",
-    },
-    dev: {
-      description: "Dev mode: use an insecure socket and print the `TF_REATTACH_PROVIDERS` export instead of the handshake line. Equivalent to `TF_PLUGIN_DEBUG=1`.",
-      type: "boolean",
-      default: "false",
-    },
-    protoDir: {
-      description: "Path to directory containing the `.proto` files. Defaults to the `proto/` directory bundled with terrably. Override when using a custom build pipeline.",
-      type: "string",
-    },
-  }}
-/>
+<AutoTypeTable path="../sdk/src/serve.ts" name="ServeOptions" />
 
 ---
 

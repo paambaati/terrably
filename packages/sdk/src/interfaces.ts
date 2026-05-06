@@ -102,15 +102,22 @@ export interface FunctionCallContext {
 }
 
 export interface FunctionParameter {
+  /** Parameter name. */
   name: string;
+  /** Any `TfType` — same types used in schema attributes. */
   type: TfType;
+  /** Parameter description. */
   description?: string;
+  /** Format of description. @defaultValue `"markdown"` */
   descriptionKind?: DescriptionKind;
-  /** When true, null may be passed as an argument value. Default: false. */
+  /**
+   * When `false` (default), Terraform errors when the caller passes `null`.
+   * @defaultValue `false`
+   */
   allowNullValue?: boolean;
   /**
-   * When true, unknown values may be passed. When false (default), Terraform
-   * skips the call entirely and treats the result as unknown.
+   * When `false` (default), Terraform skips the call when any arg is unknown.
+   * @defaultValue `false`
    */
   allowUnknownValues?: boolean;
 }
@@ -120,13 +127,22 @@ export interface FunctionReturn {
 }
 
 export interface FunctionSignature {
+  /** Ordered list of named positional parameters. */
   parameters: FunctionParameter[];
+  /** The return type of the function. */
   returnType: FunctionReturn;
-  /** Optional final parameter that accepts zero or more additional arguments of the same type. */
+  /**
+   * Optional. Accepts zero or more additional arguments of this type appended
+   * after positional ones.
+   */
   variadicParameter?: FunctionParameter;
+  /** Short description shown in `terraform providers schema`. */
   summary?: string;
+  /** Longer description. */
   description?: string;
+  /** Format of description. @defaultValue `"markdown"` */
   descriptionKind?: DescriptionKind;
+  /** Set to deprecate the function. */
   deprecationMessage?: string;
 }
 

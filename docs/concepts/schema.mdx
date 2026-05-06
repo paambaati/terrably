@@ -80,60 +80,7 @@ new Attribute(name: string, type: TfType, options?: AttributeOptions)
 
 ### `AttributeOptions`
 
-<TypeTable
-  type={{
-    required: {
-      description: "User must provide this attribute in their config.",
-      type: "boolean",
-      default: "false",
-    },
-    optional: {
-      description: "User may provide this attribute.",
-      type: "boolean",
-      default: "false",
-    },
-    computed: {
-      description: "Provider computes this value. Cannot be set by the user unless also `optional`.",
-      type: "boolean",
-      default: "false",
-    },
-    sensitive: {
-      description: "Value is redacted in plan output and stored encrypted in state. See [sensitive data in state](https://developer.hashicorp.com/terraform/language/state/sensitive-data).",
-      type: "boolean",
-      default: "false",
-    },
-    requiresReplace: {
-      description: "Changing this attribute [destroys and recreates the resource](https://developer.hashicorp.com/terraform/plugin/framework/resources/plan-modification#requiresreplace).",
-      type: "boolean",
-      default: "false",
-    },
-    description: {
-      description: "Shown in `terraform providers schema`.",
-      type: "string",
-      default: '""',
-    },
-    descriptionKind: {
-      description: "Format of the description.",
-      type: '"plain" | "markdown"',
-      default: '"markdown"',
-    },
-    deprecated: {
-      description: "Shows a deprecation warning when the attribute is used.",
-      type: "boolean",
-      default: "false",
-    },
-    deprecationMessage: {
-      description: "Custom deprecation text.",
-      type: "string",
-      default: '""',
-    },
-    default: {
-      description: "Default value used during planning when the attribute is not set.",
-      type: "unknown",
-      default: "undefined",
-    },
-  }}
-/>
+<AutoTypeTable path="../sdk/src/schema.ts" name="AttributeOptions" />
 
 **Common patterns**
 
@@ -207,35 +154,7 @@ new Schema([
 
 Pass `BlockOptions` as the third argument to `new Block(...)` to set documentation or deprecation on the block itself — distinct from per-attribute options.
 
-<TypeTable
-  type={{
-    description: {
-      description: "Human-readable description for this block, shown in `terraform providers schema` and the Terraform Registry.",
-      type: "string",
-      default: '""',
-    },
-    descriptionKind: {
-      description: "Format of the description.",
-      type: '"plain" | "markdown"',
-      default: '"markdown"',
-    },
-    deprecated: {
-      description: "Marks the block as deprecated. Shows a warning when the block is used.",
-      type: "boolean",
-      default: "false",
-    },
-    deprecationMessage: {
-      description: "Custom message shown when the block is deprecated.",
-      type: "string",
-      default: '""',
-    },
-    computed: {
-      description: "The entire block is computed by the provider (advanced use).",
-      type: "boolean",
-      default: "false",
-    },
-  }}
-/>
+<AutoTypeTable path="../sdk/src/schema.ts" name="BlockOptions" />
 
 ```typescript
 new NestedBlock("legacy_config", "single", new Block(
