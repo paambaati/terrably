@@ -1,9 +1,8 @@
 import { defineDocs, defineConfig } from 'fumadocs-mdx/config';
+import lastModified from 'fumadocs-mdx/plugins/last-modified';
 import { transformerTwoslash } from 'fumadocs-twoslash';
 import { rehypeCodeDefaultOptions } from 'fumadocs-core/mdx-plugins';
 
-// Source content from the root docs/ directory.
-// Path is relative to this config file (packages/docs/ → ../../docs/).
 export const docs = defineDocs({
   dir: '../../docs',
   docs: {
@@ -15,6 +14,7 @@ export const docs = defineDocs({
 });
 
 export default defineConfig({
+  plugins: [lastModified()],
   mdxOptions: {
     remarkNpmOptions: {
       packageManagers: [
