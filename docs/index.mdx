@@ -15,8 +15,12 @@ Providers compile into self-contained binaries. Operators run `terraform apply` 
 npx terrably new mycloud
 cd terraform-provider-mycloud
 npm install
+
 npm run build
 # → bin/terraform-provider-mycloud (JS runtime embedded)
+
+npm run publish
+# → Provider published to Terraform Registry
 ```
 
 <Cards>

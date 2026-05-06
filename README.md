@@ -26,11 +26,14 @@ npx terrably new mycloud
 cd terraform-provider-mycloud
 npm install
 
-# Build → produces bin/terraform-provider-mycloud (~130 MB, Node.js embedded)
+# Build → produces bin/terraform-provider-mycloud
 npx terrably build
 
 # Verify the schema
 npx terrably check
+
+# Pubish the provider
+npx terrably publish
 ```
 
 ## CLI
