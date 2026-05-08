@@ -1,11 +1,8 @@
 packages:
   - packages/*
   - packages/docs
-
-ignoredBuiltDependencies:
-  - protobufjs
-  - unrs-resolver
-
-onlyBuiltDependencies:
-  - grpc-tools
-  - sharp
+allowBuilds:
+  grpc-tools: true
+  sharp: true
+  protobufjs: false
+  unrs-resolver: false
