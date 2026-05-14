@@ -6,3 +6,5 @@ allowBuilds:
   sharp: true
   protobufjs: false
   unrs-resolver: false
+  esbuild: false
+minimumReleaseAge: 4320
